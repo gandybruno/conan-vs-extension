@@ -42,12 +42,23 @@ namespace conan_vs_extension
                 }
             }
 
+            // See https://docs.conan.io/2/reference/config_files/settings.html for the
+            // mapping between the MSVC platform toolset and Conan's msvc compiler.version.
+            // Note: Visual Studio 18 jumped straight from v143 to v145 (v144 doesn't exist).
             var msvcVersionMap = new Dictionary<string, string>();
-            msvcVersionMap["v145"] = "195";
+            msvcVersionMap["v145"] = "195"; // Visual Studio 18 2026
             msvcVersionMap["v143"] = "193";
             msvcVersionMap["v142"] = "192";
             msvcVersionMap["v141"] = "191";
-            return msvcVersionMap[platformToolset];
+
+            if (!msvcVersionMap.TryGetValue(platformToolset, out string compilerVersion))
+            {
+                throw new NotSupportedException(
+                    $"Unknown or unsupported PlatformToolset '{platformToolset}'. " +
+                    "The Conan extension does not yet know which Conan compiler.version this toolset maps to.");
+            }
+
+            return compilerVersion;
         }
 
         private string GetRuntimeLibraryType(runtimeLibraryOption runtimeLibraryValue)
@@ -110,26 +121,31 @@ namespace conan_vs_extension
                             Directory.CreateDirectory(conanProjectDirectory);
                         }
 
+                        var configErrors = new List<string>();
+
                         foreach (VCConfiguration vcConfig in (IEnumerable)vcProject.Configurations)
                         {
                             string profileName = getProfileName(vcConfig);
-                            string profilePath = System.IO.Path.Combine(conanProjectDirectory, profileName);
 
-                            string toolset = vcConfig.Evaluate("$(PlatformToolset)").ToString();
-                            string vsVersion = vcConfig.Evaluate("$(MSBuildVersion)").ToString();
-                            string compilerVersion = getConanCompilerVersion(toolset, vsVersion);
-                            string arch = getConanArch(vcConfig.Evaluate("$(PlatformName)").ToString());
-                            IVCRulePropertyStorage generalRule = vcConfig.Rules.Item("ConfigurationGeneral") as IVCRulePropertyStorage;
-                            string languageStandard = generalRule == null ? null : generalRule.GetEvaluatedPropertyValue("LanguageStandard");
-                            string cppStd = getConanCppstd(languageStandard);
+                            try
+                            {
+                                string profilePath = System.IO.Path.Combine(conanProjectDirectory, profileName);
 
-                            var tools = (IVCCollection) vcConfig.Tools;
-                            var vcCTool = (VCCLCompilerTool) tools.Item("VCCLCompilerTool");
+                                string toolset = vcConfig.Evaluate("$(PlatformToolset)").ToString();
+                                string vsVersion = vcConfig.Evaluate("$(MSBuildVersion)").ToString();
+                                string compilerVersion = getConanCompilerVersion(toolset, vsVersion);
+                                string arch = getConanArch(vcConfig.Evaluate("$(PlatformName)").ToString());
+                                IVCRulePropertyStorage generalRule = vcConfig.Rules.Item("ConfigurationGeneral") as IVCRulePropertyStorage;
+                                string languageStandard = generalRule == null ? null : generalRule.GetEvaluatedPropertyValue("LanguageStandard");
+                                string cppStd = getConanCppstd(languageStandard);
 
-                            string runtime = GetRuntimeLibraryType(vcCTool.RuntimeLibrary);
+                                var tools = (IVCCollection) vcConfig.Tools;
+                                var vcCTool = (VCCLCompilerTool) tools.Item("VCCLCompilerTool");
 
-                            string buildType = vcConfig.ConfigurationName;
-                            string profileContent = 
+                                string runtime = GetRuntimeLibraryType(vcCTool.RuntimeLibrary);
+
+                                string buildType = vcConfig.ConfigurationName;
+                                string profileContent =
 $@"
 [settings]
 arch={arch}
@@ -144,25 +160,42 @@ compiler.version={compilerVersion}
 os=Windows
 ";
 
-                            bool shouldWriteFile = true;
+                                bool shouldWriteFile = true;
 
-                            if (File.Exists(profilePath))
-                            {
-                                string existingProfileContent = File.ReadAllText(profilePath);
-                                if (existingProfileContent == profileContent)
+                                if (File.Exists(profilePath))
                                 {
-                                    shouldWriteFile = false;
+                                    string existingProfileContent = File.ReadAllText(profilePath);
+                                    if (existingProfileContent == profileContent)
+                                    {
+                                        shouldWriteFile = false;
+                                    }
+                                }
+
+                                if (shouldWriteFile)
+                                {
+                                    File.WriteAllText(profilePath, profileContent);
+                                    // We create this .runconan file to indicate that there were changes in the profile and that
+                                    // Conan should run, this file is removed by the script that launches conan to reset the state
+                                    string runConanFilePath = System.IO.Path.Combine(conanProjectDirectory, ".runconan");
+                                    File.WriteAllText(runConanFilePath, "");
                                 }
                             }
-
-                            if (shouldWriteFile)
+                            catch (Exception configEx)
                             {
-                                File.WriteAllText(profilePath, profileContent);
-                                // We create this .runconan file to indicate that there were changes in the profile and that
-                                // Conan should run, this file is removed by the script that launches conan to reset the state
-                                string runConanFilePath = System.IO.Path.Combine(conanProjectDirectory, ".runconan");
-                                File.WriteAllText(runConanFilePath, ""); 
+                                // Don't let one bad configuration (e.g. an unrecognized/new PlatformToolset)
+                                // prevent profiles from being generated for the other configurations.
+                                configErrors.Add($"{profileName}: {configEx.Message}");
                             }
+                        }
+
+                        if (configErrors.Count > 0)
+                        {
+                            MessageBox.Show(
+                                "There was a problem generating the Conan profile(s) for:" + Environment.NewLine +
+                                string.Join(Environment.NewLine, configErrors),
+                                "Error - Conan C/C++ Package Manager",
+                                MessageBoxButton.OK,
+                                MessageBoxImage.Error);
                         }
                     }
                 }
