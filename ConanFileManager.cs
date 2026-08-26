@@ -45,9 +45,12 @@ namespace conan_vs_extension
                     .IgnoreUnmatchedProperties()
                     .Build();
 
+                // Deserialize<T> returns null (rather than a default-constructed instance) when the
+                // YAML document is empty (e.g. an empty or comment-only conandata.yml), so this must
+                // be null-checked to avoid a NullReferenceException.
                 var result = deserializer.Deserialize<Requirements>(string.Join(Environment.NewLine, conandataContents));
 
-                if (result.requirements != null)
+                if (result?.requirements != null)
                 {
                     return result.requirements;
                 }
@@ -111,9 +114,19 @@ namespace conan_vs_extension
             if (IsFileCommentGuarded(path))
             {
                 string[] requirements = GetConandataRequirements(projectDirectory);
-                if (!requirements.Contains(newRequirement))
+                string libraryName = newRequirement.Split('/')[0];
+
+                // A conanfile.py can only require one version/channel of a given library at a time
+                // (Conan raises "Duplicated requirement" otherwise), so replace any existing
+                // requirement for the same library instead of just appending if the exact string differs.
+                bool alreadyUpToDate = requirements.Contains(newRequirement);
+                if (!alreadyUpToDate)
                 {
-                    var newRequirements = requirements.Append(newRequirement).ToArray();
+                    var newRequirements = requirements
+                        .Where(req => req.Split('/')[0] != libraryName)
+                        .Append(newRequirement)
+                        .ToArray();
+
                     var serializer = new SerializerBuilder()
                         .WithNamingConvention(UnderscoredNamingConvention.Instance)
                         .Build();
@@ -121,7 +134,7 @@ namespace conan_vs_extension
 
                     // Combine guard comments and YAML contents.
                     string fileContents = string.Join(Environment.NewLine, _modifyCommentGuard) + Environment.NewLine + yaml;
-                    
+
                     // Write the combined contents to the file.
                     File.WriteAllText(path, fileContents);
                 }
