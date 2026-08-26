@@ -47,6 +47,25 @@ libraries on the next compilation of the project.
 At any point, you can also use the refresh button (🔄) to update the list of available
 packages in [Conan Center](https://conan.io/center).
 
+#### Configuring the Package Source
+
+By default, the extension fetches the list of available packages from a JFrog Artifactory
+JSON index. It can also be configured to fetch that list from a **GitLab Package Registry**
+(Conan) instead. Open **Tools > Options > Conan C/C++ Package Manager** and, under
+**Package Source**, choose `GitLab`, then fill in the **Package Source - GitLab** section:
+
+- **GitLab URL**: base URL of the GitLab instance, e.g. `https://gitlab.com` or
+  `https://gitlab.mycompany.com`.
+- **Project ID or Path**: the numeric GitLab project ID (e.g. `12345678`) or its
+  URL-encoded path (e.g. `group%2Fsubgroup%2Fproject`).
+- **Private Token**: a Personal or Project Access Token with at least the `read_api`
+  scope. Leave empty if the project's package registry is public.
+
+The extension queries the GitLab [packages
+API](https://docs.gitlab.com/ee/api/packages.html#for-a-project)
+(`GET /api/v4/projects/:id/packages?package_type=conan`, paginated) to list all
+recipes and versions published in that project's package registry.
+
 Now, if you initiate the build process for your project, the pre-build event will trigger
 Conan to install the packages and inject the necessary properties into the project,
 enabling Visual Studio to compile and link against those libraries.
