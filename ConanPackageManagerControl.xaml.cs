@@ -60,6 +60,11 @@ namespace conan_vs_extension
         private PackageTab _currentTab = PackageTab.Browse;
         private List<PackageSourceEntry> _sources = new List<PackageSourceEntry>();
 
+        // Incremented every time a new metadata fetch starts, so a slow fetch for a package the
+        // user has since clicked away from can detect it's stale and avoid overwriting the panel
+        // with outdated info (NuGet has the same "fetching details" race to guard against).
+        private int _metadataRequestId;
+
         public ConanPackageManagerControl(Project project)
         {
             this.InitializeComponent();
@@ -328,6 +333,95 @@ namespace conan_vs_extension
             InstalledStatusTextBlock.Text = isInstalled
                 ? $"Installé : {installedRequirement.Substring(name.Length + 1)}"
                 : "Non installé dans ce projet.";
+        }
+
+        private void VersionsComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (LibraryNameLabel.Content is string name && VersionsComboBox.SelectedItem is string version)
+            {
+                _ = RefreshPackageMetadataAsync(name, version);
+            }
+        }
+
+        /// <summary>
+        /// Fetches recipe metadata (description, license, homepage, author, topics) straight from
+        /// the recipe's own conanfile.py, on-demand for the selected package/version - mirroring
+        /// how NuGet's "Manage Packages" pane only downloads a package's nuspec once it's selected,
+        /// rather than for the whole list up front (which would be far too slow).
+        /// </summary>
+        private async Task RefreshPackageMetadataAsync(string name, string version)
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            int requestId = ++_metadataRequestId;
+
+            MetadataLoadingTextBlock.Visibility = Visibility.Visible;
+            MetadataUnavailableTextBlock.Visibility = Visibility.Collapsed;
+            PackageDescriptionTextBlock.Visibility = Visibility.Collapsed;
+            PackageLicensePanel.Visibility = Visibility.Collapsed;
+            PackageAuthorPanel.Visibility = Visibility.Collapsed;
+            PackageTopicsPanel.Visibility = Visibility.Collapsed;
+            PackageHomepageLine.Visibility = Visibility.Collapsed;
+
+            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(version) ||
+                !(PackageSourceComboBox.SelectedItem is PackageSourceEntry source))
+            {
+                MetadataLoadingTextBlock.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            ConanRemoteHelper.RecipeMetadata metadata =
+                await ConanRemoteHelper.GetRecipeMetadataAsync(name, version, source.RemoteName);
+
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            if (requestId != _metadataRequestId)
+            {
+                // The user has since selected a different package/version - this result is stale.
+                return;
+            }
+
+            MetadataLoadingTextBlock.Visibility = Visibility.Collapsed;
+
+            if (metadata == null)
+            {
+                // conan couldn't retrieve/read the recipe (wrong CLI flag for this conan version,
+                // remote unreachable, recipe not found...) - say so instead of leaving the panel
+                // silently empty. The real error is logged to Debug.WriteLine.
+                MetadataUnavailableTextBlock.Visibility = Visibility.Visible;
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(metadata.Description))
+            {
+                PackageDescriptionTextBlock.Text = metadata.Description;
+                PackageDescriptionTextBlock.Visibility = Visibility.Visible;
+            }
+
+            if (!string.IsNullOrWhiteSpace(metadata.License))
+            {
+                PackageLicenseTextBlock.Text = metadata.License;
+                PackageLicensePanel.Visibility = Visibility.Visible;
+            }
+
+            if (!string.IsNullOrWhiteSpace(metadata.Author))
+            {
+                PackageAuthorTextBlock.Text = metadata.Author;
+                PackageAuthorPanel.Visibility = Visibility.Visible;
+            }
+
+            if (metadata.Topics != null && metadata.Topics.Count > 0)
+            {
+                PackageTopicsTextBlock.Text = string.Join(", ", metadata.Topics);
+                PackageTopicsPanel.Visibility = Visibility.Visible;
+            }
+
+            if (!string.IsNullOrWhiteSpace(metadata.Homepage) &&
+                Uri.TryCreate(metadata.Homepage, UriKind.Absolute, out Uri homepageUri))
+            {
+                PackageHomepageHyperlink.NavigateUri = homepageUri;
+                PackageHomepageLine.Visibility = Visibility.Visible;
+            }
         }
 
         private Uri GetMoreInfoUri(string name)
