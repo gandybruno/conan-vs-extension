@@ -63,6 +63,10 @@
     <Compile Include="ConanToolWindowControl.xaml.cs">
       <DependentUpon>ConanToolWindowControl.xaml</DependentUpon>
     </Compile>
+    <Compile Include="ConanPackageManagerWindowPane.cs" />
+    <Compile Include="ConanPackageManagerControl.xaml.cs">
+      <DependentUpon>ConanPackageManagerControl.xaml</DependentUpon>
+    </Compile>
     <Compile Include="ConanToolWindowPackage.cs" />
     <Compile Include="Guids.cs" />
     <Compile Include="ProjectConfigurationManager.cs" />
@@ -87,6 +91,10 @@
   </ItemGroup>
   <ItemGroup>
     <Page Include="ConanToolWindowControl.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="ConanPackageManagerControl.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
