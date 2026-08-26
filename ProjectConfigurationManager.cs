@@ -117,6 +117,7 @@ set performInstall=0
 
 if not exist "".conan\CONANDATA_%CONAN_BUILD_CONFIG%"" set ""performInstall=1""
 if not exist "".conan\CONANFILE_%CONAN_BUILD_CONFIG%"" set ""performInstall=1""
+if exist ""version.txt"" if not exist "".conan\VERSION_%CONAN_BUILD_CONFIG%"" set ""performInstall=1""
 
 REM Check for changes in conandata.yml and conanfile.py
 
@@ -135,6 +136,15 @@ if exist "".conan\CONANFILE_%CONAN_BUILD_CONFIG%"" (
     if errorlevel 1 (
         set performInstall=1
         echo Changes detected in conanfile.py
+    )
+)
+
+if exist ""version.txt"" if exist "".conan\VERSION_%CONAN_BUILD_CONFIG%"" (
+    echo Checking changes in version.txt
+    fc ""version.txt"" "".conan\VERSION_%CONAN_BUILD_CONFIG%"" > nul
+    if errorlevel 1 (
+        set performInstall=1
+        echo Changes detected in version.txt
     )
 )
 
@@ -171,6 +181,7 @@ if %performInstall% equ 1 (
     REM Update control files to reflect current state
     copy /Y conandata.yml .conan\CONANDATA_%CONAN_BUILD_CONFIG%
     copy /Y conanfile.py .conan\CONANFILE_%CONAN_BUILD_CONFIG%
+    if exist ""version.txt"" copy /y version.txt .conan\VERSION_%CONAN_BUILD_CONFIG%
 
     REM Display the message indicating Conan install finished
     echo ****************************************************************
