@@ -31,11 +31,13 @@ namespace conan_vs_extension
         {
             public string Name { get; set; }
             public string Url { get; set; }
+            public bool Enabled { get; set; } = true;
+            public bool VerifySsl { get; set; } = true;
         }
 
         // Matches lines like:
         //   my-gitlab: https://gitlab.com/api/v4/projects/12345678/packages/conan [Verify SSL: True, Enabled: True]
-        private static readonly Regex RemoteLineRegex = new Regex(@"^(?<name>\S+):\s+(?<url>\S+)\s+\[", RegexOptions.Compiled);
+        private static readonly Regex RemoteLineRegex = new Regex(@"^(?<name>\S+):\s+(?<url>\S+)\s+\[(?<attrs>[^\]]*)\]", RegexOptions.Compiled);
 
         // Matches the Conan remote URL form GitLab's Conan v2 registry uses:
         //   https://gitlab.com/api/v4/projects/12345678/packages/conan
@@ -77,10 +79,14 @@ namespace conan_vs_extension
                         Match match = RemoteLineRegex.Match(line.Trim());
                         if (match.Success)
                         {
+                            string attrs = match.Groups["attrs"].Value;
+
                             remotes.Add(new ConanRemote
                             {
                                 Name = match.Groups["name"].Value,
-                                Url = match.Groups["url"].Value
+                                Url = match.Groups["url"].Value,
+                                Enabled = !Regex.IsMatch(attrs, @"Enabled:\s*False", RegexOptions.IgnoreCase),
+                                VerifySsl = !Regex.IsMatch(attrs, @"Verify SSL:\s*False", RegexOptions.IgnoreCase)
                             });
                         }
                     }
@@ -192,6 +198,67 @@ namespace conan_vs_extension
             catch
             {
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Adds a new Conan remote (`conan remote add`), same effect as running the command in a
+        /// terminal - lets the "Package Sources" Options page manage remotes NuGet-style instead of
+        /// requiring the user to leave Visual Studio.
+        /// </summary>
+        public static Task<(bool success, string error)> AddRemoteAsync(string name, string url, bool verifySsl)
+        {
+            string sslFlag = verifySsl ? string.Empty : " --insecure";
+            return RunConanRemoteCommandAsync($"remote add \"{name}\" \"{url}\"{sslFlag}");
+        }
+
+        /// <summary>Removes a Conan remote (`conan remote remove`).</summary>
+        public static Task<(bool success, string error)> RemoveRemoteAsync(string name)
+        {
+            return RunConanRemoteCommandAsync($"remote remove \"{name}\"");
+        }
+
+        /// <summary>Changes a remote's URL and/or SSL verification (`conan remote update`).</summary>
+        public static Task<(bool success, string error)> UpdateRemoteUrlAsync(string name, string url, bool verifySsl)
+        {
+            string sslFlag = verifySsl ? " --secure" : " --insecure";
+            return RunConanRemoteCommandAsync($"remote update \"{name}\" --url=\"{url}\"{sslFlag}");
+        }
+
+        /// <summary>Enables a previously disabled remote (`conan remote enable`).</summary>
+        public static Task<(bool success, string error)> EnableRemoteAsync(string name)
+        {
+            return RunConanRemoteCommandAsync($"remote enable \"{name}\"");
+        }
+
+        /// <summary>Disables a remote without removing it (`conan remote disable`).</summary>
+        public static Task<(bool success, string error)> DisableRemoteAsync(string name)
+        {
+            return RunConanRemoteCommandAsync($"remote disable \"{name}\"");
+        }
+
+        private static async Task<(bool success, string error)> RunConanRemoteCommandAsync(string arguments)
+        {
+            string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
+                ? "conan"
+                : GlobalSettings.ConanExecutablePath;
+
+            try
+            {
+                (int exitCode, string stdout, string stderr) = await RunConanCommandAsync(conanPath, arguments, 20000);
+                if (exitCode != 0)
+                {
+                    string error = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+                    System.Diagnostics.Debug.WriteLine($"[ConanRemoteHelper] 'conan {arguments}' failed (exit {exitCode}): {error}");
+                    return (false, string.IsNullOrWhiteSpace(error) ? $"conan a retourné le code {exitCode}." : error.Trim());
+                }
+
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ConanRemoteHelper] 'conan {arguments}' threw: {ex}");
+                return (false, ex.Message);
             }
         }
 

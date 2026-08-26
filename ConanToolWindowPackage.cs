@@ -34,7 +34,8 @@ namespace conan_vs_extension
     [ProvideToolWindow(typeof(ConanToolWindow))]
     [Guid(ConanToolWindowPackage.PackageGuidString)]
     [SuppressMessage("StyleCop.CSharp.DocumentationRules", "SA1650:ElementDocumentationMustBeSpelledCorrectly", Justification = "pkgdef, VS and vsixmanifest are valid VS terms")]
-    [ProvideOptionPage(typeof(ConanOptionsPage), "Conan", "General", 0, 0, true)]
+    [ProvideOptionPage(typeof(ConanOptionsPage), "Conan Package Manager", "General", 0, 0, true)]
+    [ProvideOptionPage(typeof(ConanPackageSourcesOptionsPage), "Conan Package Manager", "Package Sources", 0, 0, true)]
     public sealed class ConanToolWindowPackage : AsyncPackage
     {
         /// <summary>

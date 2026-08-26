@@ -4,6 +4,10 @@ namespace conan_vs_extension
 	{
 		public const string strConanOptionsPage = "188e5905-b7fe-4f68-a738-46e4a698caac";
 
+		// "Conan Package Manager > Package Sources" options page - the NuGet-style remote
+		// management grid (add/remove/update/enable/disable via `conan remote ...`).
+		public const string strConanPackageSourcesOptionsPage = "6f2a0b3d-9e4c-4a1f-8b7d-2c5e6a9f1d34";
+
 		// Opaque "document kind" tag passed to IVsUIShell.CreateDocumentWindow when opening the
 		// NuGet-style Conan Package Manager as a document window. This does NOT require a
 		// registered IVsEditorFactory: NuGet itself uses this same pattern (guidNuGetEditorType)
