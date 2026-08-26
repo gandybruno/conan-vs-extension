@@ -11,11 +11,24 @@ public class ConanOptionsPage : DialogPage
     private string _conanExecutablePath;
     private bool _useSystemConan;
 
-    private PackageRegistrySource _packageSource = PackageRegistrySource.JFrog;
-    private string _jFrogPackagesUrl = GlobalSettings.JFrogPackagesUrl;
-    private string _gitLabUrl = string.Empty;
-    private string _gitLabProjectId = string.Empty;
-    private string _gitLabPrivateToken = string.Empty;
+    private string _selectedPackageSourceName = string.Empty;
+    private string _gitLabRemoteTokensRaw = string.Empty;
+
+    /// <summary>
+    /// Refreshes every field from GlobalSettings right before the Options dialog is shown, so
+    /// values discovered/entered purely at runtime this session - the auto-detected GitLab
+    /// URL/project ID, per-remote tokens typed into the "browse" prompt - show up here and get
+    /// persisted to disk if the user clicks OK, instead of only living in memory for the
+    /// current Visual Studio session.
+    /// </summary>
+    protected override void OnActivate(CancelEventArgs e)
+    {
+        base.OnActivate(e);
+
+        _conanExecutablePath = GlobalSettings.ConanExecutablePath;
+        _selectedPackageSourceName = GlobalSettings.SelectedPackageSourceName;
+        _gitLabRemoteTokensRaw = GlobalSettings.GitLabRemoteTokensRaw;
+    }
 
     [Category("Conan")]
     [DisplayName("Executable Path")]
@@ -59,69 +72,30 @@ public class ConanOptionsPage : DialogPage
         }
     }
 
-    [Category("Package Source")]
-    [DisplayName("Source")]
-    [Description("Where the list of available packages is fetched from: a JFrog Artifactory JSON index, or a GitLab Package Registry (Conan) project.")]
-    public PackageRegistrySource PackageSource
+    // Not shown in the Options property grid - internal state persisted across sessions the same
+    // way as the visible properties (DialogPage persists any public property by default). The
+    // package source itself is no longer manually configured here: it comes entirely from
+    // `conan remote list` (see ConanRemoteHelper / ConanPackageManagerControl).
+
+    [Browsable(false)]
+    public string SelectedPackageSourceName
     {
-        get => _packageSource;
+        get => _selectedPackageSourceName;
         set
         {
-            _packageSource = value;
-            GlobalSettings.PackageSource = value;
+            _selectedPackageSourceName = value;
+            GlobalSettings.SelectedPackageSourceName = value;
         }
     }
 
-    [Category("Package Source - JFrog")]
-    [DisplayName("Packages JSON URL")]
-    [Description("URL of the packages.ref.json index served by JFrog Artifactory. Only used when Source is set to JFrog.")]
-    public string JFrogPackagesUrl
+    [Browsable(false)]
+    public string GitLabRemoteTokensRaw
     {
-        get => _jFrogPackagesUrl;
+        get => _gitLabRemoteTokensRaw;
         set
         {
-            _jFrogPackagesUrl = value?.Trim();
-            GlobalSettings.JFrogPackagesUrl = value;
-        }
-    }
-
-    [Category("Package Source - GitLab")]
-    [DisplayName("GitLab URL")]
-    [Description("Base URL of the GitLab instance hosting the Package Registry, e.g. https://gitlab.com or https://gitlab.mycompany.com. Only used when Source is set to GitLab.")]
-    public string GitLabUrl
-    {
-        get => _gitLabUrl;
-        set
-        {
-            _gitLabUrl = value?.Trim();
-            GlobalSettings.GitLabUrl = value;
-        }
-    }
-
-    [Category("Package Source - GitLab")]
-    [DisplayName("Project ID or Path")]
-    [Description("Numeric GitLab project ID (e.g. 12345) or its URL-encoded path (e.g. group%2Fsubgroup%2Fproject). Only used when Source is set to GitLab.")]
-    public string GitLabProjectId
-    {
-        get => _gitLabProjectId;
-        set
-        {
-            _gitLabProjectId = value?.Trim();
-            GlobalSettings.GitLabProjectId = value;
-        }
-    }
-
-    [Category("Package Source - GitLab")]
-    [DisplayName("Private Token")]
-    [Description("GitLab Personal or Project Access Token with at least the 'read_api' scope. Leave empty for a public project.")]
-    [PasswordPropertyText(true)]
-    public string GitLabPrivateToken
-    {
-        get => _gitLabPrivateToken;
-        set
-        {
-            _gitLabPrivateToken = value?.Trim();
-            GlobalSettings.GitLabPrivateToken = value;
+            _gitLabRemoteTokensRaw = value;
+            GlobalSettings.GitLabRemoteTokensRaw = value;
         }
     }
 

@@ -67,6 +67,7 @@
     <Compile Include="ConanPackageManagerControl.xaml.cs">
       <DependentUpon>ConanPackageManagerControl.xaml</DependentUpon>
     </Compile>
+    <Compile Include="ConanRemoteHelper.cs" />
     <Compile Include="ConanToolWindowPackage.cs" />
     <Compile Include="Guids.cs" />
     <Compile Include="ProjectConfigurationManager.cs" />

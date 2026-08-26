@@ -40,9 +40,25 @@ namespace conan_vs_extension
             Installed
         }
 
+        /// <summary>
+        /// One entry of the "Source de package" dropdown, NuGet-style: a Conan remote already
+        /// configured on this machine (via `conan remote add`), browsed via the standard Conan v2
+        /// protocol. No manual URL/token configuration in the plugin itself - everything comes
+        /// from Conan's own remote list.
+        /// </summary>
+        private class PackageSourceEntry
+        {
+            public string DisplayName { get; set; }
+            public string RemoteName { get; set; }
+            public string RemoteUrl { get; set; }
+
+            public override string ToString() => DisplayName;
+        }
+
         private readonly Project _project;
         private RootObject _jsonData;
         private PackageTab _currentTab = PackageTab.Browse;
+        private List<PackageSourceEntry> _sources = new List<PackageSourceEntry>();
 
         public ConanPackageManagerControl(Project project)
         {
@@ -52,7 +68,6 @@ namespace conan_vs_extension
             this.Loaded += ConanPackageManagerControl_Loaded;
 
             HeaderTitleTextBlock.Text = "Gestionnaire de packages Conan : " + (project?.Name ?? string.Empty);
-            PackageSourceLabel.Text = "Source : " + (GlobalSettings.PackageSource == PackageRegistrySource.GitLab ? "GitLab" : "JFrog");
 
             UpdateTabVisual();
             ToggleUIEnableState(IsConanInitialized());
@@ -84,15 +99,55 @@ namespace conan_vs_extension
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-            await CopyJsonFileFromResourceIfNeededAsync();
+            await EnsureDefaultJsonFileExistsAsync();
             await LoadLibrariesFromJsonAsync();
+
+            // Populate the "Source de package" dropdown entirely from `conan remote list`.
+            // Selecting a source (including the initial auto-selection) triggers the first real
+            // fetch via PackageSourceComboBox_SelectionChanged.
+            await LoadPackageSourcesAsync();
         }
 
-        private async Task CopyJsonFileFromResourceIfNeededAsync()
+        private async Task LoadPackageSourcesAsync()
         {
-            // Update the local cache first (best-effort; keeps whatever cache already exists if it fails).
-            await UpdateJsonDataAsync(false);
+            var sources = new List<PackageSourceEntry>();
 
+            List<ConanRemoteHelper.ConanRemote> remotes = await ConanRemoteHelper.ListRemotesAsync();
+            foreach (var remote in remotes)
+            {
+                sources.Add(new PackageSourceEntry
+                {
+                    DisplayName = remote.Name,
+                    RemoteName = remote.Name,
+                    RemoteUrl = remote.Url
+                });
+            }
+
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            _sources = sources;
+            PackageSourceComboBox.ItemsSource = _sources;
+
+            PackageSourceEntry toSelect = _sources.FirstOrDefault(s =>
+                string.Equals(s.DisplayName, GlobalSettings.SelectedPackageSourceName, StringComparison.OrdinalIgnoreCase));
+
+            // Setting SelectedItem fires PackageSourceComboBox_SelectionChanged, which kicks off
+            // the first real fetch for whichever source ends up selected.
+            PackageSourceComboBox.SelectedItem = toSelect ?? _sources.FirstOrDefault();
+        }
+
+        private void PackageSourceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (PackageSourceComboBox.SelectedItem is PackageSourceEntry entry)
+            {
+                GlobalSettings.SelectedPackageSourceName = entry.DisplayName;
+                _ = UpdateJsonDataAsync(false);
+            }
+        }
+
+        private async Task EnsureDefaultJsonFileExistsAsync()
+        {
             string userConanFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".conan-vs-extension");
             string jsonFilePath = Path.Combine(userConanFolder, "targets-data.json");
 
@@ -277,16 +332,24 @@ namespace conan_vs_extension
 
         private Uri GetMoreInfoUri(string name)
         {
-            if (GlobalSettings.PackageSource == PackageRegistrySource.GitLab)
+            if (PackageSourceComboBox.SelectedItem is PackageSourceEntry source)
             {
-                (string baseUrl, _) = ResolveGitLabProjectEndpoint(GlobalSettings.GitLabUrl, GlobalSettings.GitLabProjectId);
-                if (!string.IsNullOrWhiteSpace(baseUrl))
+                Match match = Regex.Match(source.RemoteUrl ?? string.Empty,
+                    @"^(?<base>https?://[^/]+)/api/v4/projects/(?<projectId>[^/?]+)/packages/conan/?$",
+                    RegexOptions.IgnoreCase);
+
+                if (match.Success)
                 {
-                    return new Uri($"{baseUrl}/-/packages?search[]={Uri.EscapeDataString(name)}");
+                    return new Uri($"{match.Groups["base"].Value}/-/packages?search[]={Uri.EscapeDataString(name)}");
+                }
+
+                if (Uri.TryCreate(source.RemoteUrl, UriKind.Absolute, out Uri remoteUri))
+                {
+                    return remoteUri;
                 }
             }
 
-            return new Uri($"https://jfrog.example.com/ui/packages/{name}");
+            return new Uri("about:blank");
         }
 
         private void InstallButton_Click(object sender, RoutedEventArgs e)
@@ -376,6 +439,7 @@ namespace conan_vs_extension
             PackagesListBox.IsEnabled = enabled;
             BrowseTabButton.IsEnabled = enabled;
             InstalledTabButton.IsEnabled = enabled;
+            PackageSourceComboBox.IsEnabled = enabled;
 
             LibrarySearchTextBox.Text = enabled ? "" : "Cliquez sur 'Configurer' pour définir le chemin de Conan -->";
         }
@@ -387,18 +451,30 @@ namespace conan_vs_extension
             ToggleUIEnableState(IsConanInitialized());
         }
 
-        // ---- Package source fetching (JFrog / GitLab). Mirrors ConanToolWindowControl's logic;
-        // kept as a self-contained copy here rather than shared, to avoid touching the still-working
-        // ConanToolWindowControl while this new document-window UI is being introduced. ----
+        // ---- Package source fetching: entirely driven by Conan's own remotes (`conan remote
+        // list`), no manual URL/token configuration in the plugin. See
+        // FetchLibrariesFromConanRemoteAsync for the standard-protocol-first, GitLab-REST-fallback
+        // logic. ----
 
         private async Task UpdateJsonDataAsync(bool popUp)
         {
+            if (!(PackageSourceComboBox.SelectedItem is PackageSourceEntry source))
+            {
+                if (popUp)
+                {
+                    MessageBox.Show(
+                        "Aucun remote Conan n'est configuré sur cette machine. Ajoutez-en un avec 'conan remote add <nom> <url>' puis cliquez sur Actualiser.",
+                        "Conan C/C++ Package Manager",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+                return;
+            }
+
             LoadingOverlay.Visibility = Visibility.Visible;
             try
             {
-                Dictionary<string, HashSet<string>> libraries = GlobalSettings.PackageSource == PackageRegistrySource.GitLab
-                    ? await FetchLibrariesFromGitLabAsync(popUp)
-                    : await FetchLibrariesFromJFrogAsync(popUp);
+                Dictionary<string, HashSet<string>> libraries = await FetchLibrariesFromConanRemoteAsync(source, popUp);
 
                 if (libraries == null)
                 {
@@ -409,7 +485,7 @@ namespace conan_vs_extension
                 await LoadLibrariesFromJsonAsync();
 
                 if (popUp)
-                    MessageBox.Show($"Liste des packages conan mise à jour ({libraries.Count} bibliothèque(s)).", "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show($"Liste des packages conan mise à jour ({libraries.Count} bibliothèque(s)) depuis '{source.DisplayName}'.", "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
@@ -422,68 +498,70 @@ namespace conan_vs_extension
             }
         }
 
-        private async Task<Dictionary<string, HashSet<string>>> FetchLibrariesFromJFrogAsync(bool popUp)
+        /// <summary>
+        /// Browses a Conan remote already configured on this machine. Tries the standard Conan v2
+        /// protocol first (works out of the box for Artifactory, conancenter, a generic
+        /// conan_server...); if that comes back empty and the remote's URL matches GitLab's Conan
+        /// v2 registry pattern, falls back to GitLab's own Packages REST API, since GitLab's
+        /// search endpoint doesn't support a bare "*" wildcard (confirmed: q=* returns nothing,
+        /// q=he* works fine) even though its own documentation says it should.
+        /// </summary>
+        private async Task<Dictionary<string, HashSet<string>>> FetchLibrariesFromConanRemoteAsync(PackageSourceEntry source, bool popUp)
         {
-            string jsonUrl = GlobalSettings.JFrogPackagesUrl;
+            Dictionary<string, HashSet<string>> libraries = await ConanRemoteHelper.ListAllPackagesAsync(source.RemoteName);
+
+            if (libraries != null && libraries.Count > 0)
+            {
+                return libraries;
+            }
+
+            Match gitLabMatch = Regex.Match(source.RemoteUrl ?? string.Empty,
+                @"^(?<base>https?://[^/]+)/api/v4/projects/(?<projectId>[^/?]+)/packages/conan/?$",
+                RegexOptions.IgnoreCase);
+
+            if (gitLabMatch.Success)
+            {
+                return await FetchLibrariesFromGitLabPackagesApiAsync(
+                    gitLabMatch.Groups["base"].Value,
+                    gitLabMatch.Groups["projectId"].Value,
+                    source.RemoteName,
+                    popUp);
+            }
 
             if (popUp)
             {
-                string input = MessageBoxWithInput.Show("Entrez URL de packages.ref.json :", "Setting package", jsonUrl);
-                if (input == null)
+                MessageBox.Show($"Aucun package trouvé sur le remote '{source.RemoteName}'.", "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return libraries ?? new Dictionary<string, HashSet<string>>();
+        }
+
+        /// <summary>
+        /// GitLab's Packages REST API, keyed to one specific Conan remote's name so each
+        /// GitLab-backed remote can have its own access token (see
+        /// GlobalSettings.GetGitLabTokenForRemote/SetGitLabTokenForRemote).
+        /// </summary>
+        private async Task<Dictionary<string, HashSet<string>>> FetchLibrariesFromGitLabPackagesApiAsync(string baseUrl, string projectId, string remoteName, bool popUp)
+        {
+            string token = GlobalSettings.GetGitLabTokenForRemote(remoteName);
+
+            if (string.IsNullOrWhiteSpace(token) && popUp)
+            {
+                string input = MessageBoxWithInput.Show(
+                    $"Le remote GitLab '{remoteName}' nécessite un token d'accès (scope 'read_api') pour lister ses packages.\nEntrez le token (laissez vide pour un projet public) :",
+                    "Conan C/C++ Package Manager", string.Empty);
+                if (input != null)
                 {
-                    return null;
+                    token = input;
+                    GlobalSettings.SetGitLabTokenForRemote(remoteName, token);
                 }
-                jsonUrl = input;
-                GlobalSettings.JFrogPackagesUrl = jsonUrl;
             }
 
             using (var httpClient = new HttpClient())
             {
-                string jsonContent = await httpClient.GetStringAsync(jsonUrl);
-
-                JObject obj = JObject.Parse(jsonContent);
-                JArray pkgArray = (JArray)obj["packages"];
-                var recipeRefs = pkgArray?.Select(item => item.ToString()) ?? Enumerable.Empty<string>();
-
-                return ParseRecipeReferences(recipeRefs, @"^([\w\d]+)\/([\d.]+)@_\/_$");
-            }
-        }
-
-        private static (string baseUrl, string projectId) ResolveGitLabProjectEndpoint(string configuredUrl, string configuredProjectId)
-        {
-            configuredUrl = configuredUrl?.Trim() ?? string.Empty;
-
-            Match match = Regex.Match(configuredUrl, @"^(https?://[^/]+)/api/v4/projects/([^/?]+)/packages", RegexOptions.IgnoreCase);
-            if (match.Success)
-            {
-                return (match.Groups[1].Value, match.Groups[2].Value);
-            }
-
-            return (configuredUrl.TrimEnd('/'), configuredProjectId?.Trim() ?? string.Empty);
-        }
-
-        private async Task<Dictionary<string, HashSet<string>>> FetchLibrariesFromGitLabAsync(bool popUp)
-        {
-            (string baseUrl, string projectId) = ResolveGitLabProjectEndpoint(GlobalSettings.GitLabUrl, GlobalSettings.GitLabProjectId);
-
-            if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(projectId))
-            {
-                if (popUp)
+                if (!string.IsNullOrWhiteSpace(token))
                 {
-                    MessageBox.Show(
-                        "Veuillez renseigner l'URL GitLab (ex: https://gitlab.com) et l'identifiant du projet (ex: 12345678) dans Tools > Options > Conan C/C++ Package Manager > Package Source - GitLab.",
-                        "Conan C/C++ Package Manager",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
-                }
-                return null;
-            }
-
-            using (var httpClient = new HttpClient())
-            {
-                if (!string.IsNullOrWhiteSpace(GlobalSettings.GitLabPrivateToken))
-                {
-                    httpClient.DefaultRequestHeaders.Add("PRIVATE-TOKEN", GlobalSettings.GitLabPrivateToken);
+                    httpClient.DefaultRequestHeaders.Add("PRIVATE-TOKEN", token);
                 }
 
                 var recipeRefs = new List<string>();
