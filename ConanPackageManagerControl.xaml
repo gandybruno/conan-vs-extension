@@ -1,0 +1,308 @@
+<UserControl x:Class="conan_vs_extension.ConanPackageManagerControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:vsshell="clr-namespace:Microsoft.VisualStudio.Shell;assembly=Microsoft.VisualStudio.Shell.15.0"
+             Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"
+             Foreground="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="950"
+             Name="ConanPackageManager">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/conan-vs-extension;component/Resources/icons.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <Style x:Key="TabButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="4,6"/>
+                <Setter Property="Margin" Value="0,0,20,0"/>
+                <Setter Property="FontSize" Value="15"/>
+                <Setter Property="Cursor" Value="Hand"/>
+            </Style>
+
+            <Style x:Key="PackageListBoxItemStyle" TargetType="ListBoxItem">
+                <Setter Property="Padding" Value="10,8"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            </Style>
+
+            <Style x:Key="ThemedTextBoxStyle" TargetType="TextBox">
+                <Setter Property="Background" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"/>
+                <Setter Property="Foreground" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource {x:Static vsshell:VsBrushes.ActiveBorderKey}}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CaretBrush" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"/>
+            </Style>
+
+            <Style x:Key="ThemedButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"/>
+                <Setter Property="Foreground" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource {x:Static vsshell:VsBrushes.ActiveBorderKey}}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="ButtonBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   TextElement.Foreground="{TemplateBinding Foreground}"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource {x:Static vsshell:VsBrushes.HighlightKey}}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static vsshell:VsBrushes.HighlightTextKey}}"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ThemedComboBoxItemStyle" TargetType="ComboBoxItem">
+                <Setter Property="Background" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"/>
+                <Setter Property="Foreground" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"/>
+                <Setter Property="Padding" Value="6,4"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBoxItem">
+                            <Border x:Name="ItemBorder" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource {x:Static vsshell:VsBrushes.HighlightKey}}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static vsshell:VsBrushes.HighlightTextKey}}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ThemedComboBoxStyle" TargetType="ComboBox">
+                <Setter Property="Background" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"/>
+                <Setter Property="Foreground" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource {x:Static vsshell:VsBrushes.ActiveBorderKey}}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="6,3"/>
+                <Setter Property="ItemContainerStyle" Value="{StaticResource ThemedComboBoxItemStyle}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBox">
+                            <Grid>
+                                <Border x:Name="MainBorder"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"/>
+                                <Grid Margin="{TemplateBinding BorderThickness}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="18"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False"
+                                                       Content="{TemplateBinding SelectionBoxItem}"
+                                                       ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                       Margin="{TemplateBinding Padding}"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                                    <Path Grid.Column="1" Data="M0,0 L4,4 L8,0 Z"
+                                          Fill="{TemplateBinding Foreground}" IsHitTestVisible="False"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Grid>
+                                <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press"
+                                              IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="Transparent"/>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
+                                <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True"
+                                       Focusable="False" PopupAnimation="Slide"
+                                       IsOpen="{TemplateBinding IsDropDownOpen}">
+                                    <Border Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"
+                                            BorderBrush="{DynamicResource {x:Static vsshell:VsBrushes.ActiveBorderKey}}"
+                                            BorderThickness="1"
+                                            MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                            MaxHeight="220">
+                                        <ScrollViewer>
+                                            <ItemsPresenter/>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid Margin="12,10,12,12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Line 1: tabs (Parcourir / Installé) on the left, window title right-aligned - like NuGet -->
+        <Grid Grid.Row="0" Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <StackPanel Orientation="Vertical">
+                    <Button x:Name="BrowseTabButton" Content="Parcourir" Click="BrowseTabButton_Click" Style="{StaticResource TabButtonStyle}"/>
+                    <Border x:Name="BrowseTabUnderline" Height="2" Background="{DynamicResource {x:Static vsshell:VsBrushes.HighlightKey}}" Margin="4,4,20,0"/>
+                </StackPanel>
+                <StackPanel Orientation="Vertical">
+                    <Button x:Name="InstalledTabButton" Content="Installé" Click="InstalledTabButton_Click" Style="{StaticResource TabButtonStyle}"/>
+                    <Border x:Name="InstalledTabUnderline" Height="2" Background="{DynamicResource {x:Static vsshell:VsBrushes.HighlightKey}}" Margin="4,4,20,0"/>
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock x:Name="HeaderTitleTextBlock" Grid.Column="1" FontSize="19" FontWeight="Normal"
+                       VerticalAlignment="Center" HorizontalAlignment="Right"
+                       Foreground="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"
+                       Text="Gestionnaire de packages Conan"/>
+        </Grid>
+
+        <!-- Line 2: search box aligned with the package list column below it, source + settings/refresh
+             on the right - like NuGet. Same column proportions ("*","8","*") as the content grid below
+             so the search box lines up exactly above the package list. -->
+        <Grid Grid.Row="1" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBox x:Name="LibrarySearchTextBox" Grid.Column="0" Style="{StaticResource ThemedTextBoxStyle}"
+                     VerticalContentAlignment="Center" Height="28" FontSize="13"
+                     TextChanged="SearchTextBox_TextChanged"/>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <TextBlock x:Name="PackageSourceLabel" VerticalAlignment="Center" Opacity="0.7" FontSize="12"
+                           Margin="0,0,10,0" Text="Source : —"/>
+                <Button x:Name="UpdateButton" ToolTip="Actualiser la liste des packages" Click="Update_Click"
+                        BorderThickness="0" Background="{x:Null}" Padding="4">
+                    <Image Source="{StaticResource ic_fluent_arrow_sync_24_regularDrawingImage}" Stretch="None" Width="18" Height="18"/>
+                </Button>
+                <Button x:Name="ConfigureConanButton" ToolTip="Configurer Conan" Click="Configuration_Click"
+                        BorderThickness="0" Background="{x:Null}" Padding="4" Margin="4,0,0,0">
+                    <Image Source="{StaticResource ic_fluent_settings_24_regularDrawingImage}" Stretch="None" Width="18" Height="18"/>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <Separator Grid.Row="2" Margin="0,0,0,0"/>
+
+        <StackPanel x:Name="UnsupportedProjectType" Visibility="Collapsed" Grid.Row="3" Margin="0,10,0,0">
+            <TextBlock Margin="0,0,0,5" FontSize="16" FontWeight="Bold">Type de projet non pris en charge</TextBlock>
+            <TextBlock TextWrapping="Wrap">
+                Ce projet n'est pas un projet msbuild pris en charge par l'extension Conan.
+            </TextBlock>
+        </StackPanel>
+
+        <!-- Main content: package list on the left, details on the right, split 50/50 like NuGet -->
+        <Grid Grid.Row="4" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left column: the package list, with a NuGet-style loading overlay shown while the
+                 package list is being fetched. -->
+            <Grid Grid.Column="0">
+                <Border BorderThickness="1" BorderBrush="{DynamicResource {x:Static vsshell:VsBrushes.ActiveBorderKey}}"
+                        Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}">
+                    <ListBox x:Name="PackagesListBox" BorderThickness="0"
+                             Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"
+                             Foreground="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"
+                             SelectionChanged="PackagesListBox_SelectionChanged"
+                             ItemContainerStyle="{StaticResource PackageListBoxItemStyle}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Vertical">
+                                    <TextBlock Text="{Binding}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="Package Conan" Opacity="0.7" FontSize="11" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
+                <Border x:Name="LoadingOverlay" Visibility="Collapsed"
+                        Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"
+                        BorderThickness="1" BorderBrush="{DynamicResource {x:Static vsshell:VsBrushes.ActiveBorderKey}}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <ProgressBar IsIndeterminate="True" Width="140" Height="4" Margin="0,0,0,10"/>
+                        <TextBlock Text="Chargement des packages..." HorizontalAlignment="Center" Opacity="0.7"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch" Background="Transparent"/>
+
+            <Grid x:Name="DetailsPanel" Grid.Column="2" Visibility="Collapsed" Margin="14,0,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,14">
+                    <Label x:Name="LibraryNameLabel" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Content="Library Name" Padding="0"
+                           Foreground="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"/>
+                </StackPanel>
+
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="Version :" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="VersionsComboBox" Width="200" VerticalAlignment="Center" Style="{StaticResource ThemedComboBoxStyle}"/>
+                    <Button x:Name="InstallButton" Content="Installer" Margin="12,0,0,0" Padding="14,4" Click="InstallButton_Click" VerticalAlignment="Center" Style="{StaticResource ThemedButtonStyle}"/>
+                    <Button x:Name="RemoveButton" Content="Désinstaller" Margin="12,0,0,0" Padding="14,4" Click="RemoveButton_Click" VerticalAlignment="Center" Style="{StaticResource ThemedButtonStyle}"/>
+                </StackPanel>
+
+                <TextBlock x:Name="InstalledStatusTextBlock" Grid.Row="2" Margin="0,0,0,10" FontStyle="Italic" Opacity="0.7"/>
+
+                <Separator Grid.Row="3" Margin="0,0,0,10"/>
+
+                <TextBlock Grid.Row="4" Text="Détails du package" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
+
+                <StackPanel Grid.Row="5">
+                    <TextBlock Margin="0,0,0,6">
+                        <Hyperlink x:Name="MoreInfoHyperlink" RequestNavigate="Hyperlink_RequestNavigate">
+                            Plus d'informations sur ce package
+                        </Hyperlink>
+                    </TextBlock>
+                    <TextBlock Margin="0,0,0,6">
+                        <Hyperlink x:Name="GitHubRecipeLink" RequestNavigate="Hyperlink_RequestNavigate">
+                            Voir la recette
+                        </Hyperlink>
+                    </TextBlock>
+                </StackPanel>
+            </Grid>
+
+            <TextBlock x:Name="NoSelectionTextBlock" Grid.Column="2" Text="Sélectionnez un package dans la liste pour voir ses détails."
+                       Opacity="0.7" Margin="14,8,0,0" TextWrapping="Wrap"/>
+        </Grid>
+    </Grid>
+</UserControl>
