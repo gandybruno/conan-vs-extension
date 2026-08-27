@@ -33,6 +33,12 @@ namespace conan_vs_extension
             public string Url { get; set; }
             public bool Enabled { get; set; } = true;
             public bool VerifySsl { get; set; } = true;
+
+            /// <summary>
+            /// The username currently authenticated on this remote (`conan remote list-users`),
+            /// or null/empty if anonymous - i.e. whether `conan remote login` was ever run for it.
+            /// </summary>
+            public string User { get; set; }
         }
 
         // Matches lines like:
@@ -253,6 +259,141 @@ namespace conan_vs_extension
         public static Task<(bool success, string error)> DisableRemoteAsync(string name)
         {
             return RunConanRemoteCommandAsync($"remote disable \"{name}\"");
+        }
+
+        // Matches a remote's own header line in `conan remote list-users` output, e.g. "my-gitlab:"
+        // (the per-remote details that follow, like "Username: foo", are indented under it).
+        private static readonly Regex RemoteUsersHeaderRegex = new Regex(@"^(?<name>\S+):\s*$", RegexOptions.Compiled);
+        private static readonly Regex RemoteUsersUsernameRegex = new Regex(@"Username:\s*(?<user>\S+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// Runs `conan remote list-users` and returns, for every remote that currently has a
+        /// logged-in user, its username - used to show authentication status next to each remote
+        /// in the "Package Sources" Options page. A remote missing from the result is anonymous
+        /// (never logged in, or logged out). Never throws; returns an empty dictionary on failure.
+        /// </summary>
+        public static async Task<Dictionary<string, string>> ListRemoteUsersAsync()
+        {
+            var users = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
+                ? "conan"
+                : GlobalSettings.ConanExecutablePath;
+
+            ConanOutputPane.Log("conan remote list-users");
+
+            try
+            {
+                (int exitCode, string stdout, string stderr) = await RunConanCommandAsync(conanPath, "remote list-users", 15000);
+                if (exitCode != 0)
+                {
+                    ConanOutputPane.Log($"  -> échec (code {exitCode}) : {(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr)}");
+                    return users;
+                }
+
+                string currentRemote = null;
+                foreach (var rawLine in stdout.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string line = rawLine.TrimEnd();
+
+                    Match header = RemoteUsersHeaderRegex.Match(line.TrimStart());
+                    if (header.Success)
+                    {
+                        currentRemote = header.Groups["name"].Value;
+                        continue;
+                    }
+
+                    if (currentRemote == null)
+                    {
+                        continue;
+                    }
+
+                    Match userMatch = RemoteUsersUsernameRegex.Match(line);
+                    if (userMatch.Success && !string.Equals(userMatch.Groups["user"].Value, "None", StringComparison.OrdinalIgnoreCase))
+                    {
+                        users[currentRemote] = userMatch.Groups["user"].Value;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ConanOutputPane.Log($"  -> exception : {ex.Message}");
+            }
+
+            return users;
+        }
+
+        /// <summary>
+        /// Authenticates on a remote (`conan remote login`), same effect as running it in a
+        /// terminal. The password is never passed as a command-line argument (which would make it
+        /// visible to anything that can see the process list) - it's piped through the child
+        /// process's standard input instead, exactly like typing it at the interactive prompt.
+        /// </summary>
+        public static async Task<(bool success, string error)> LoginRemoteAsync(string name, string username, string password)
+        {
+            string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
+                ? "conan"
+                : GlobalSettings.ConanExecutablePath;
+
+            string arguments = $"remote login \"{name}\" \"{username}\"";
+            ConanOutputPane.Log($"conan {arguments}");
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = conanPath,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            try
+            {
+                using (var process = Process.Start(psi))
+                {
+                    await process.StandardInput.WriteLineAsync(password ?? string.Empty);
+                    process.StandardInput.Close();
+
+                    Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+                    Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+                    Task readsTask = Task.WhenAll(stdoutTask, stderrTask);
+
+                    Task completed = await Task.WhenAny(readsTask, Task.Delay(20000));
+                    if (completed != readsTask)
+                    {
+                        try { process.Kill(); } catch { /* already exited on its own */ }
+                        ConanOutputPane.Log("  -> délai dépassé (20s), processus arrêté.");
+                        return (false, "conan n'a pas répondu dans le délai imparti (20s).");
+                    }
+
+                    string stdout = await stdoutTask;
+                    string stderr = await stderrTask;
+                    await Task.Run(() => process.WaitForExit(5000));
+
+                    if (process.ExitCode != 0)
+                    {
+                        string error = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+                        ConanOutputPane.Log($"  -> échec (code {process.ExitCode}) : {error}");
+                        return (false, string.IsNullOrWhiteSpace(error) ? $"conan a retourné le code {process.ExitCode}." : error.Trim());
+                    }
+
+                    ConanOutputPane.Log("  -> OK");
+                    return (true, null);
+                }
+            }
+            catch (Exception ex)
+            {
+                ConanOutputPane.Log($"  -> exception : {ex.Message}");
+                return (false, ex.Message);
+            }
+        }
+
+        /// <summary>Clears a remote's stored authentication (`conan remote logout`).</summary>
+        public static Task<(bool success, string error)> LogoutRemoteAsync(string name)
+        {
+            return RunConanRemoteCommandAsync($"remote logout \"{name}\"");
         }
 
         private static async Task<(bool success, string error)> RunConanRemoteCommandAsync(string arguments)

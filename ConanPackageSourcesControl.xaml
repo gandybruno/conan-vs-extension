@@ -7,8 +7,8 @@
              Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"
              Foreground="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"
              mc:Ignorable="d"
-             d:DesignHeight="480" d:DesignWidth="640"
-             MinWidth="560" MinHeight="440">
+             d:DesignHeight="480" d:DesignWidth="720"
+             MinWidth="640" MinHeight="440">
 
     <UserControl.Resources>
         <ResourceDictionary>
@@ -102,13 +102,16 @@
             </DataGrid.CellStyle>
             <DataGrid.Columns>
                 <DataGridCheckBoxColumn Header="Activé" Binding="{Binding Enabled, Mode=OneWay}" Width="60"/>
-                <DataGridTextColumn Header="Nom" Binding="{Binding Name, Mode=OneWay}" Width="150"/>
+                <DataGridTextColumn Header="Nom" Binding="{Binding Name, Mode=OneWay}" Width="130"/>
                 <DataGridTextColumn Header="Source (URL)" Binding="{Binding Url, Mode=OneWay}" Width="*"/>
+                <DataGridTextColumn Header="Utilisateur" Binding="{Binding User, Mode=OneWay, TargetNullValue='(anonyme)'}" Width="110"/>
                 <DataGridCheckBoxColumn Header="SSL" Binding="{Binding VerifySsl, Mode=OneWay}" Width="50"/>
             </DataGrid.Columns>
         </DataGrid>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,14">
+            <Button x:Name="LoginButton" Content="Se connecter..." IsEnabled="False" Click="LoginButton_Click"
+                    Padding="12,4" Margin="0,0,8,0" Style="{StaticResource ThemedButtonStyle}"/>
             <Button x:Name="EnableDisableButton" Content="Désactiver" IsEnabled="False" Click="EnableDisableButton_Click"
                     Padding="12,4" Margin="0,0,8,0" Style="{StaticResource ThemedButtonStyle}"/>
             <Button x:Name="EditSourceButton" Content="Modifier la source..." IsEnabled="False" Click="EditSourceButton_Click"
