@@ -145,6 +145,97 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+
+            <!-- The search box, styled like NuGet's own "Recherche (Ctrl+L)" field: an editable
+                 combo box (so it can offer a dropdown of recent searches), a magnifying-glass
+                 button to "launch" the search (Enter does the same), and hint text shown while
+                 empty. Filtering itself still happens live as you type (see SearchTextBox_TextChanged) -
+                 the magnifying glass/Enter only commit the current text into the recent-searches list. -->
+            <Style x:Key="SearchComboBoxStyle" TargetType="ComboBox">
+                <Setter Property="Background" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"/>
+                <Setter Property="Foreground" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource {x:Static vsshell:VsBrushes.ActiveBorderKey}}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="IsEditable" Value="True"/>
+                <Setter Property="IsTextSearchEnabled" Value="False"/>
+                <Setter Property="StaysOpenOnEdit" Value="True"/>
+                <Setter Property="Height" Value="28"/>
+                <Setter Property="Padding" Value="8,0,0,0"/>
+                <Setter Property="ItemContainerStyle" Value="{StaticResource ThemedComboBoxItemStyle}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBox">
+                            <Grid>
+                                <Border x:Name="MainBorder"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"/>
+                                <Grid Margin="{TemplateBinding BorderThickness}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="26"/>
+                                        <ColumnDefinition Width="16"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Grid Grid.Column="0">
+                                        <TextBlock x:Name="WatermarkText" Text="Rechercher (Ctrl+L)"
+                                                   Opacity="0.5" VerticalAlignment="Center"
+                                                   Margin="{TemplateBinding Padding}"
+                                                   IsHitTestVisible="False" Visibility="Collapsed"/>
+                                        <TextBox x:Name="PART_EditableTextBox"
+                                                 Background="Transparent" BorderThickness="0"
+                                                 Foreground="{TemplateBinding Foreground}"
+                                                 CaretBrush="{TemplateBinding Foreground}"
+                                                 VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                                 Margin="{TemplateBinding Padding}"
+                                                 Focusable="{TemplateBinding IsEditable}"/>
+                                    </Grid>
+
+                                    <Button x:Name="SearchIconButton" Grid.Column="1" Click="SearchIconButton_Click"
+                                            ToolTip="Rechercher" Background="Transparent" BorderThickness="0"
+                                            Cursor="Hand" Focusable="False">
+                                        <Path Data="M15.5,14h-0.79l-0.28-0.27C15.41,12.59,16,11.11,16,9.5A6.5,6.5,0,1,0,9.5,16c1.61,0,3.09-0.59,4.23-1.57l0.27,0.28v0.79l5,4.99L20.49,19L15.5,14z M9.5,14C7.01,14,5,11.99,5,9.5S7.01,5,9.5,5S14,7.01,14,9.5S11.99,14,9.5,14z"
+                                              Fill="{TemplateBinding Foreground}" Stretch="Uniform" Width="13" Height="13"/>
+                                    </Button>
+
+                                    <Path Grid.Column="2" Data="M0,0 L4,4 L8,0 Z"
+                                          Fill="{TemplateBinding Foreground}" IsHitTestVisible="False" Opacity="0.7"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press"
+                                              HorizontalAlignment="Right" Width="16"
+                                              IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="Transparent"/>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
+
+                                <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True"
+                                       Focusable="False" PopupAnimation="Slide"
+                                       IsOpen="{TemplateBinding IsDropDownOpen}">
+                                    <Border Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"
+                                            BorderBrush="{DynamicResource {x:Static vsshell:VsBrushes.ActiveBorderKey}}"
+                                            BorderThickness="1"
+                                            MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                            MaxHeight="220">
+                                        <ScrollViewer>
+                                            <ItemsPresenter/>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="Text" Value="">
+                                    <Setter TargetName="WatermarkText" Property="Visibility" Value="Visible"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -192,9 +283,23 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <TextBox x:Name="LibrarySearchTextBox" Grid.Column="0" Style="{StaticResource ThemedTextBoxStyle}"
-                     VerticalContentAlignment="Center" Height="28" FontSize="13"
-                     TextChanged="SearchTextBox_TextChanged"/>
+            <!-- Search box (recent-searches combo + magnifying glass, NuGet-style) followed
+                 immediately by the refresh button, like NuGet's search row. -->
+            <Grid Grid.Column="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <ComboBox x:Name="LibrarySearchComboBox" Grid.Column="0" Style="{StaticResource SearchComboBoxStyle}"
+                          FontSize="13" KeyDown="LibrarySearchComboBox_KeyDown"/>
+
+                <Button x:Name="UpdateButton" Grid.Column="1" ToolTip="Actualiser la liste des packages" Click="Update_Click"
+                        Style="{StaticResource ThemedButtonStyle}" BorderThickness="0" Background="{x:Null}"
+                        Padding="4" Margin="6,0,0,0">
+                    <Image Source="{StaticResource ic_fluent_arrow_sync_24_regularDrawingImage}" Stretch="Fill" Width="16" Height="16"/>
+                </Button>
+            </Grid>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <TextBlock Text="Source :" VerticalAlignment="Center" Opacity="0.7" FontSize="12" Margin="0,0,6,0"/>
@@ -202,13 +307,9 @@
                           Style="{StaticResource ThemedComboBoxStyle}"
                           SelectionChanged="PackageSourceComboBox_SelectionChanged"
                           Margin="0,0,10,0"/>
-                <Button x:Name="UpdateButton" ToolTip="Actualiser la liste des packages" Click="Update_Click"
-                        BorderThickness="0" Background="{x:Null}" Padding="4">
-                    <Image Source="{StaticResource ic_fluent_arrow_sync_24_regularDrawingImage}" Stretch="None" Width="18" Height="18"/>
-                </Button>
                 <Button x:Name="ConfigureConanButton" ToolTip="Configurer Conan" Click="Configuration_Click"
-                        BorderThickness="0" Background="{x:Null}" Padding="4" Margin="4,0,0,0">
-                    <Image Source="{StaticResource ic_fluent_settings_24_regularDrawingImage}" Stretch="None" Width="18" Height="18"/>
+                        Style="{StaticResource ThemedButtonStyle}" BorderThickness="0" Background="{x:Null}" Padding="4">
+                    <Image Source="{StaticResource ic_fluent_settings_24_regularDrawingImage}" Stretch="Fill" Width="16" Height="16"/>
                 </Button>
             </StackPanel>
         </Grid>

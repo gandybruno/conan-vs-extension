@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System;
 using System.Net.Http;
@@ -72,6 +74,12 @@ namespace conan_vs_extension
         // with outdated info (NuGet has the same "fetching details" race to guard against).
         private int _metadataRequestId;
 
+        // Most-recent-first history shown in the search box's dropdown - like NuGet's own search
+        // field. Kept in memory only (per document window), most recent at index 0, capped and
+        // de-duplicated by CommitSearchToHistory.
+        private readonly ObservableCollection<string> _recentSearches = new ObservableCollection<string>();
+        private const int MaxRecentSearches = 10;
+
         public ConanPackageManagerControl(Project project)
         {
             this.InitializeComponent();
@@ -80,6 +88,12 @@ namespace conan_vs_extension
             this.Loaded += ConanPackageManagerControl_Loaded;
 
             HeaderTitleTextBlock.Text = "Gestionnaire de packages Conan : " + (project?.Name ?? string.Empty);
+
+            LibrarySearchComboBox.ItemsSource = _recentSearches;
+            // ComboBox has no public "TextChanged" event of its own (that belongs to the internal
+            // PART_EditableTextBox) - but since it's a routed event, an ancestor can still listen
+            // for it via AddHandler even without a dedicated CLR event to wire up in XAML.
+            LibrarySearchComboBox.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler(SearchTextBox_TextChanged));
 
             UpdateTabVisual();
             ToggleUIEnableState(IsConanInitialized());
@@ -223,13 +237,54 @@ namespace conan_vs_extension
             _jsonData = JsonConvert.DeserializeObject<RootObject>(json);
 
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-            FilterListView(LibrarySearchTextBox.Text);
+            FilterListView(LibrarySearchComboBox.Text);
         }
 
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            FilterListView(LibrarySearchTextBox.Text);
+            FilterListView(LibrarySearchComboBox.Text);
+        }
+
+        /// <summary>
+        /// Enter in the search box - like NuGet's Ctrl+L search field - commits the current text to
+        /// the "recent searches" dropdown (the list itself already filters live via TextChanged).
+        /// </summary>
+        private void LibrarySearchComboBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (e.Key == System.Windows.Input.Key.Enter)
+            {
+                CommitSearchToHistory(LibrarySearchComboBox.Text);
+            }
+        }
+
+        /// <summary>The magnifying glass button - "launches" the search, same effect as pressing Enter.</summary>
+        private void SearchIconButton_Click(object sender, RoutedEventArgs e)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            CommitSearchToHistory(LibrarySearchComboBox.Text);
+        }
+
+        /// <summary>
+        /// Adds a search term to the "recent searches" dropdown, most-recent-first, de-duplicated
+        /// and capped at <see cref="MaxRecentSearches"/> entries - mirroring NuGet's own search
+        /// history dropdown.
+        /// </summary>
+        private void CommitSearchToHistory(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            _recentSearches.Remove(text);
+            _recentSearches.Insert(0, text);
+
+            while (_recentSearches.Count > MaxRecentSearches)
+            {
+                _recentSearches.RemoveAt(_recentSearches.Count - 1);
+            }
         }
 
         private void BrowseTabButton_Click(object sender, RoutedEventArgs e)
@@ -238,7 +293,7 @@ namespace conan_vs_extension
             _currentTab = PackageTab.Browse;
             UpdateTabVisual();
             UpdateLoadingOverlayVisibility(); // a fetch may still be in flight from when we left this tab
-            FilterListView(LibrarySearchTextBox.Text);
+            FilterListView(LibrarySearchComboBox.Text);
         }
 
         private void InstalledTabButton_Click(object sender, RoutedEventArgs e)
@@ -249,7 +304,7 @@ namespace conan_vs_extension
             // "Installé" only reads conandata.yml + the local targets-data.json - it never needs
             // to wait on a "Parcourir" remote fetch, however slow or stuck that might be.
             UpdateLoadingOverlayVisibility();
-            FilterListView(LibrarySearchTextBox.Text);
+            FilterListView(LibrarySearchComboBox.Text);
         }
 
         private void UpdateTabVisual()
@@ -560,7 +615,7 @@ namespace conan_vs_extension
                 RemoveButton.IsEnabled = true;
             }
 
-            FilterListView(LibrarySearchTextBox.Text);
+            FilterListView(LibrarySearchComboBox.Text);
             UpdateLibraryInfo(selectedLibrary);
         }
 
@@ -629,7 +684,7 @@ namespace conan_vs_extension
                 RemoveButton.IsEnabled = true;
             }
 
-            FilterListView(LibrarySearchTextBox.Text);
+            FilterListView(LibrarySearchComboBox.Text);
 
             // In the "Installé" tab, removing a package makes it disappear from the list entirely
             // (it only ever lists installed requirements) - so there is no longer anything to show
@@ -665,14 +720,14 @@ namespace conan_vs_extension
 
         private void ToggleUIEnableState(bool enabled)
         {
-            LibrarySearchTextBox.IsEnabled = enabled;
+            LibrarySearchComboBox.IsEnabled = enabled;
             UpdateButton.IsEnabled = enabled;
             PackagesListBox.IsEnabled = enabled;
             BrowseTabButton.IsEnabled = enabled;
             InstalledTabButton.IsEnabled = enabled;
             PackageSourceComboBox.IsEnabled = enabled;
 
-            LibrarySearchTextBox.Text = enabled ? "" : "Cliquez sur 'Configurer' pour définir le chemin de Conan -->";
+            LibrarySearchComboBox.Text = enabled ? "" : "Cliquez sur 'Configurer' pour définir le chemin de Conan -->";
         }
 
         private void Configuration_Click(object sender, RoutedEventArgs e)
