@@ -531,7 +531,16 @@ namespace conan_vs_extension
                 await ProjectConfigurationManager.SaveConanPrebuildEventsAllConfigAsync(_project);
 
                 VCConfiguration activeConfig = ProjectConfigurationManager.GetActiveVCConfiguration(_project);
-                bool installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, showErrors: true);
+
+                // Registered with the SAME tracker BuildEventsHandler uses for its own proactive
+                // installs, so a Build started from Visual Studio's menu while this is still
+                // running (however unlikely, since the button is disabled) - or more realistically,
+                // one that starts right as this finishes - correctly waits for it too.
+                bool installed = false;
+                await ConanInstallTracker.Track(_project.FullName, async () =>
+                {
+                    installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, showErrors: true);
+                }).JoinAsync();
 
                 if (installed)
                 {
@@ -599,7 +608,12 @@ namespace conan_vs_extension
             try
             {
                 VCConfiguration activeConfig = ProjectConfigurationManager.GetActiveVCConfiguration(_project);
-                bool installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, showErrors: true);
+
+                bool installed = false;
+                await ConanInstallTracker.Track(_project.FullName, async () =>
+                {
+                    installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, showErrors: true);
+                }).JoinAsync();
 
                 if (!installed)
                 {
