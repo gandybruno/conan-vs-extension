@@ -320,23 +320,45 @@ echo No changes detected, skipping conan install...
 
             ConanOutputPane.Log($"[{System.IO.Path.GetFileName(projectDirectory)}] conan {arguments}");
 
+            var stdoutBuilder = new System.Text.StringBuilder();
+            var stderrBuilder = new System.Text.StringBuilder();
+            var processExited = new TaskCompletionSource<bool>();
+
             try
             {
-                using (var process = System.Diagnostics.Process.Start(psi))
+                using (var process = new System.Diagnostics.Process { StartInfo = psi, EnableRaisingEvents = true })
                 {
-                    Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
-                    Task<string> stderrTask = process.StandardError.ReadToEndAsync();
-                    Task readsTask = Task.WhenAll(stdoutTask, stderrTask);
+                    // Stream conan's output line-by-line into the "Conan" Output pane as it happens
+                    // (compiler output while building a missing binary included), instead of only
+                    // showing the final result once the whole command has finished - that's what
+                    // used to make a multi-minute `--build=missing` look completely frozen.
+                    process.OutputDataReceived += (s, e) =>
+                    {
+                        if (e.Data == null) return;
+                        stdoutBuilder.AppendLine(e.Data);
+                        ConanOutputPane.Log(e.Data);
+                    };
+                    process.ErrorDataReceived += (s, e) =>
+                    {
+                        if (e.Data == null) return;
+                        stderrBuilder.AppendLine(e.Data);
+                        ConanOutputPane.Log(e.Data);
+                    };
+                    process.Exited += (s, e) => processExited.TrySetResult(true);
+
+                    process.Start();
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
 
                     // conan install can compile missing binaries (--build=missing) - give it
                     // considerably more time than a simple metadata/list command. But still bound
                     // it: if the process hangs (waiting on input, a stalled download...) instead of
-                    // failing outright, ReadToEndAsync alone would never return and the UI would be
-                    // stuck on "chargement" indefinitely.
+                    // failing outright, this would never resolve and the UI would be stuck on
+                    // "chargement" indefinitely.
                     const int timeoutMs = 300000;
-                    Task completed = await Task.WhenAny(readsTask, Task.Delay(timeoutMs));
+                    Task completed = await Task.WhenAny(processExited.Task, Task.Delay(timeoutMs));
 
-                    if (completed != readsTask)
+                    if (completed != processExited.Task)
                     {
                         try { process.Kill(); } catch { /* already exited on its own */ }
                         string timeoutError = $"'conan install' n'a pas répondu dans le délai imparti ({timeoutMs / 1000}s).";
@@ -344,15 +366,17 @@ echo No changes detected, skipping conan install...
                         return (false, timeoutError);
                     }
 
-                    string stdout = await stdoutTask;
-                    string stderr = await stderrTask;
-                    await Task.Run(() => process.WaitForExit(5000));
+                    // The parameterless WaitForExit() guarantees the async output/error readers
+                    // have finished delivering their last buffered lines before we read the
+                    // builders below (a timed WaitForExit(ms) does not give that guarantee) - the
+                    // process has already exited at this point so this returns immediately.
+                    await Task.Run(() => process.WaitForExit());
 
                     if (process.ExitCode != 0)
                     {
-                        string error = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+                        string error = stderrBuilder.Length > 0 ? stderrBuilder.ToString() : stdoutBuilder.ToString();
                         error = string.IsNullOrWhiteSpace(error) ? $"conan a retourné le code {process.ExitCode}." : error.Trim();
-                        ConanOutputPane.Log($"  -> échec (code {process.ExitCode}) : {error}");
+                        ConanOutputPane.Log($"  -> échec (code {process.ExitCode})");
                         return (false, error);
                     }
 
