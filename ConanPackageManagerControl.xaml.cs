@@ -21,33 +21,42 @@ using Microsoft.VisualStudio.PlatformUI;
 
 namespace conan_vs_extension
 {
-    /// <summary>
-    /// NuGet-style Conan Package Manager UI: "Parcourir" / "Installé" tabs, a search box, a
-    /// package list, and a details pane with a version picker and Install/Uninstall actions.
-    /// Unlike the older <see cref="ConanToolWindowControl"/> (a docked tool window that always
-    /// acted on the solution's startup project), this control is opened as a document window
-    /// (see <see cref="ConanPackageManagerWindowPane"/> and ConanToolWindowCommand) scoped to one
-    /// specific EnvDTE Project, passed in at construction time - matching how NuGet's own
-    /// "Manage NuGet Packages..." works per-project.
-    ///
-    /// Note: RootObject/Library/Requirements and MessageBoxWithInput are intentionally NOT
-    /// redeclared here - they already exist (namespace-level) in ConanToolWindowControl.xaml.cs,
-    /// compiled into the same assembly, and are reused as-is.
-    /// </summary>
+    /**
+     * NuGet-style Conan Package Manager UI: "Parcourir" / "Installé" tabs, a search box, a
+     * package list, and a details pane with a version picker and Install/Uninstall actions.
+     * This control is opened as a document window (see ConanPackageManagerWindowPane
+     * and ConanToolWindowCommand) scoped to one specific EnvDTE Project, passed in at
+     * construction time - matching how NuGet's own "Manage NuGet Packages..." works per-project.
+     * It is the sole, actively maintained package manager UI (a now-removed docked tool window
+     * used to duplicate this functionality without most of its fixes).
+     *
+     * Note: RootObject/Library/Requirements and MessageBoxWithInput are intentionally NOT
+     * redeclared here - they already exist (namespace-level) in ConanSharedModels.cs,
+     * compiled into the same assembly, and are reused as-is.
+     */
     public partial class ConanPackageManagerControl : UserControl
     {
+        /**
+         * Which of the two NuGet-style tabs is active.
+         */
         private enum PackageTab
         {
+            /**
+             * Every package the current source offers.
+             */
             Browse,
+            /**
+             * Only the packages already required by this project (conandata.yml).
+             */
             Installed
         }
 
-        /// <summary>
-        /// One entry of the "Source de package" dropdown, NuGet-style: a Conan remote already
-        /// configured on this machine (via `conan remote add`), browsed via the standard Conan v2
-        /// protocol. No manual URL/token configuration in the plugin itself - everything comes
-        /// from Conan's own remote list.
-        /// </summary>
+        /**
+         * One entry of the "Source de package" dropdown, NuGet-style: a Conan remote already
+         * configured on this machine (via `conan remote add`), browsed via the standard Conan v2
+         * protocol. No manual URL/token configuration in the plugin itself - everything comes
+         * from Conan's own remote list.
+         */
         private class PackageSourceEntry
         {
             public string DisplayName { get; set; }
@@ -121,12 +130,12 @@ namespace conan_vs_extension
             this.Foreground = new SolidColorBrush(currentColor);
         }
 
-        /// <summary>
-        /// The loading overlay should only ever cover the "Parcourir" tab while a remote/cache
-        /// fetch is genuinely in flight - never the "Installé" tab, which only reads local files
-        /// (conandata.yml + the on-disk targets-data.json) and has no reason to wait on a network
-        /// call that might be slow or hung.
-        /// </summary>
+        /**
+         * The loading overlay should only ever cover the "Parcourir" tab while a remote/cache
+         * fetch is genuinely in flight - never the "Installé" tab, which only reads local files
+         * (conandata.yml + the on-disk targets-data.json) and has no reason to wait on a network
+         * call that might be slow or hung.
+         */
         private void UpdateLoadingOverlayVisibility()
         {
             LoadingOverlay.Visibility = (_isFetchingPackageSource && _currentTab == PackageTab.Browse)
@@ -192,6 +201,9 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Persists the newly-selected package source and re-fetches its package list (without the "found nothing"/error popups Update_Click shows, since this can also fire from code during initial load).
+         */
         private void PackageSourceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -202,6 +214,9 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Seeds `%UserProfile%\.conan-vs-extension\targets-data.json` from the extension's bundled sample data, the very first time the package manager ever runs on this machine (before any real fetch has written a copy).
+         */
         private async Task EnsureDefaultJsonFileExistsAsync()
         {
             string userConanFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".conan-vs-extension");
@@ -228,6 +243,9 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * (Re)loads `targets-data.json` from disk into _jsonData and re-applies the current search filter - called after every fetch/cache-fallback that rewrites the file.
+         */
         private async Task LoadLibrariesFromJsonAsync()
         {
             string userConanFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".conan-vs-extension");
@@ -240,16 +258,19 @@ namespace conan_vs_extension
             FilterListView(LibrarySearchComboBox.Text);
         }
 
+        /**
+         * Live-filters the package list as the user types in the search combobox (see FilterListView) - this does NOT touch the "recent searches" history, only CommitSearchToHistory (Enter/magnifying glass) does.
+         */
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             FilterListView(LibrarySearchComboBox.Text);
         }
 
-        /// <summary>
-        /// Enter in the search box - like NuGet's Ctrl+L search field - commits the current text to
-        /// the "recent searches" dropdown (the list itself already filters live via TextChanged).
-        /// </summary>
+        /**
+         * Enter in the search box - like NuGet's Ctrl+L search field - commits the current text to
+         * the "recent searches" dropdown (the list itself already filters live via TextChanged).
+         */
         private void LibrarySearchComboBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -259,18 +280,20 @@ namespace conan_vs_extension
             }
         }
 
-        /// <summary>The magnifying glass button - "launches" the search, same effect as pressing Enter.</summary>
+        /**
+         * The magnifying glass button - "launches" the search, same effect as pressing Enter.
+         */
         private void SearchIconButton_Click(object sender, RoutedEventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             CommitSearchToHistory(LibrarySearchComboBox.Text);
         }
 
-        /// <summary>
-        /// Adds a search term to the "recent searches" dropdown, most-recent-first, de-duplicated
-        /// and capped at <see cref="MaxRecentSearches"/> entries - mirroring NuGet's own search
-        /// history dropdown.
-        /// </summary>
+        /**
+         * Adds a search term to the "recent searches" dropdown, most-recent-first, de-duplicated
+         * and capped at MaxRecentSearches entries - mirroring NuGet's own search
+         * history dropdown.
+         */
         private void CommitSearchToHistory(string text)
         {
             if (string.IsNullOrWhiteSpace(text))
@@ -287,6 +310,9 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Switches to the "Parcourir" (Browse) tab: every package the current source offers, matching the search filter.
+         */
         private void BrowseTabButton_Click(object sender, RoutedEventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -296,6 +322,9 @@ namespace conan_vs_extension
             FilterListView(LibrarySearchComboBox.Text);
         }
 
+        /**
+         * Switches to the "Installé" (Installed) tab: only the packages already required by this project, matching the search filter.
+         */
         private void InstalledTabButton_Click(object sender, RoutedEventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -307,6 +336,9 @@ namespace conan_vs_extension
             FilterListView(LibrarySearchComboBox.Text);
         }
 
+        /**
+         * Updates the tab buttons' opacity and underline to reflect _currentTab.
+         */
         private void UpdateTabVisual()
         {
             bool browseActive = _currentTab == PackageTab.Browse;
@@ -316,16 +348,25 @@ namespace conan_vs_extension
             InstalledTabButton.Opacity = browseActive ? 0.7 : 1.0;
         }
 
+        /**
+         * Whether the document window's project is a Visual C++ (VCProject) one - this extension only knows how to wire up MSBuild/VC projects.
+         */
         private bool IsSupportedProject()
         {
             return _project != null && _project.Object is VCProject;
         }
 
+        /**
+         * Directory containing the current project's project file - where conanfile.py/conandata.yml live.
+         */
         private string GetProjectDirectory()
         {
             return Path.GetDirectoryName(_project.FullName);
         }
 
+        /**
+         * Repopulates `PackagesListBox` for the current tab (Browse: every matching package from _jsonData; Installed: only this project's requirements) filtered by searchText.
+         */
         private void FilterListView(string searchText)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -367,6 +408,9 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Shows the details panel for the newly-selected package, or the "select a package" placeholder if the selection was cleared.
+         */
         private void PackagesListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -387,6 +431,9 @@ namespace conan_vs_extension
             e.Handled = true;
         }
 
+        /**
+         * Looks up name's known versions in _jsonData and renders its details panel via UpdatePanel.
+         */
         private void UpdateLibraryInfo(string name)
         {
             if (_jsonData != null && _jsonData.Libraries.ContainsKey(name))
@@ -396,6 +443,12 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Renders the details panel for one package: name, version picker, Install/Uninstall button, and installed-status text - then kicks off an async recipe metadata fetch (RefreshPackageMetadataAsync) for the initially-selected version.
+         *
+         * @param name The package (library) name.
+         * @param versions Every version known for it (from the current package source).
+         */
         public void UpdatePanel(string name, List<string> versions)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -431,6 +484,9 @@ namespace conan_vs_extension
                 : "Non installé dans ce projet.";
         }
 
+        /**
+         * Re-fetches recipe metadata (description, license, ...) for the newly-picked version - see RefreshPackageMetadataAsync.
+         */
         private void VersionsComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -440,12 +496,12 @@ namespace conan_vs_extension
             }
         }
 
-        /// <summary>
-        /// Fetches recipe metadata (description, license, homepage, author, topics) straight from
-        /// the recipe's own conanfile.py, on-demand for the selected package/version - mirroring
-        /// how NuGet's "Manage Packages" pane only downloads a package's nuspec once it's selected,
-        /// rather than for the whole list up front (which would be far too slow).
-        /// </summary>
+        /**
+         * Fetches recipe metadata (description, license, homepage, author, topics) straight from
+         * the recipe's own conanfile.py, on-demand for the selected package/version - mirroring
+         * how NuGet's "Manage Packages" pane only downloads a package's nuspec once it's selected,
+         * rather than for the whole list up front (which would be far too slow).
+         */
         private async Task RefreshPackageMetadataAsync(string name, string version)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -520,6 +576,9 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Builds the "more information about this package" link: the source's own package-registry search page when it's GitLab-shaped, otherwise the remote's base URL as a best-effort fallback.
+         */
         private Uri GetMoreInfoUri(string name)
         {
             if (PackageSourceComboBox.SelectedItem is PackageSourceEntry source)
@@ -542,6 +601,13 @@ namespace conan_vs_extension
             return new Uri("about:blank");
         }
 
+        /**
+         * Adds the selected package/version to `conandata.yml` (generating conanfile.py/
+         * conandata.yml first if this is the project's first requirement) and runs `conan
+         * install` for it right away, showing the full-panel `InstallOperationOverlay` for
+         * the duration - registered with ConanInstallTracker so a Build started
+         * from Visual Studio's own menu while this is running waits for it instead of racing it.
+         */
         private async void InstallButton_Click(object sender, RoutedEventArgs e)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -608,6 +674,16 @@ namespace conan_vs_extension
                         "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
+            catch (Exception ex)
+            {
+                // This method is an async void event handler - an exception left to propagate out
+                // of it (e.g. an unexpected VCProject COM failure) would not be catchable by any
+                // caller and can destabilize/crash Visual Studio instead of just this operation.
+                ConanOutputPane.Log($"Installation de {selectedLibrary}/{selectedVersion} : exception inattendue : {ex}");
+                MessageBox.Show(
+                    $"Une erreur inattendue est survenue pendant l'installation de {selectedLibrary}/{selectedVersion} :\n{ex.Message}",
+                    "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
             finally
             {
                 InstallOperationOverlay.Visibility = Visibility.Collapsed;
@@ -619,6 +695,14 @@ namespace conan_vs_extension
             UpdateLibraryInfo(selectedLibrary);
         }
 
+        /**
+         * Removes the selected package's actual installed requirement (looked up from
+         * `conandata.yml` - never from `VersionsComboBox`, which lists remote-available
+         * versions rather than what's installed) and re-runs `conan install` so the project
+         * reflects the removal immediately, showing the full-panel `InstallOperationOverlay`
+         * for the duration and registering with ConanInstallTracker just like
+         * InstallButton_Click.
+         */
         private async void RemoveButton_Click(object sender, RoutedEventArgs e)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -677,6 +761,16 @@ namespace conan_vs_extension
                         "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
+            catch (Exception ex)
+            {
+                // This method is an async void event handler - an exception left to propagate out
+                // of it (e.g. an unexpected VCProject COM failure) would not be catchable by any
+                // caller and can destabilize/crash Visual Studio instead of just this operation.
+                ConanOutputPane.Log($"Suppression de {installedRequirement} : exception inattendue : {ex}");
+                MessageBox.Show(
+                    $"Une erreur inattendue est survenue pendant la suppression de {installedRequirement} :\n{ex.Message}",
+                    "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
             finally
             {
                 InstallOperationOverlay.Visibility = Visibility.Collapsed;
@@ -706,6 +800,9 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Opens Tools > Options directly on the "Conan Package Manager > General" page (where the Conan executable path is configured).
+         */
         private void ShowConfigurationDialog()
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -713,11 +810,17 @@ namespace conan_vs_extension
             dte?.ExecuteCommand("Tools.Options", GuidList.strConanOptionsPage);
         }
 
+        /**
+         * Whether a Conan executable path has been configured yet - most of the UI stays disabled until it has.
+         */
         private bool IsConanInitialized()
         {
             return !string.IsNullOrEmpty(GlobalSettings.ConanExecutablePath);
         }
 
+        /**
+         * Enables/disables every interactive control until Conan is configured, showing an instructional message in the search box while disabled.
+         */
         private void ToggleUIEnableState(bool enabled)
         {
             LibrarySearchComboBox.IsEnabled = enabled;
@@ -730,6 +833,9 @@ namespace conan_vs_extension
             LibrarySearchComboBox.Text = enabled ? "" : "Cliquez sur 'Configurer' pour définir le chemin de Conan -->";
         }
 
+        /**
+         * The gear/"Configurer" button: opens the Options page, then re-evaluates whether the UI should now be enabled.
+         */
         private void Configuration_Click(object sender, RoutedEventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -742,6 +848,15 @@ namespace conan_vs_extension
         // FetchLibrariesFromConanRemoteAsync for the standard-protocol-first, GitLab-REST-fallback
         // logic. ----
 
+        /**
+         * Refreshes `targets-data.json` from the currently-selected package source. On
+         * success, writes the fetched list and clears the offline banner; if the source can't be
+         * reached at all, falls back to whatever Conan's local cache genuinely has available
+         * (ConanRemoteHelper.ListLocalCachePackagesAsync) and shows the offline
+         * banner, rather than silently leaving a stale on-disk list on screen.
+         *
+         * @param popUp Whether to show result/error message boxes - true for an explicit user-triggered refresh (Update_Click), false for the automatic fetch on source selection/startup.
+         */
         private async Task UpdateJsonDataAsync(bool popUp)
         {
             if (!(PackageSourceComboBox.SelectedItem is PackageSourceEntry source))
@@ -811,18 +926,18 @@ namespace conan_vs_extension
             }
         }
 
-        /// <summary>
-        /// Browses a Conan remote already configured on this machine. Tries the standard Conan v2
-        /// protocol first (works out of the box for Artifactory, conancenter, a generic
-        /// conan_server...); if that comes back empty and the remote's URL matches GitLab's Conan
-        /// v2 registry pattern, falls back to GitLab's own Packages REST API, since GitLab's
-        /// search endpoint doesn't support a bare "*" wildcard (confirmed: q=* returns nothing,
-        /// q=he* works fine) even though its own documentation says it should.
-        ///
-        /// Returns null specifically when the remote could not be reached at all (as opposed to
-        /// being reached but genuinely empty) so the caller can fall back to the local cache
-        /// instead of silently keeping stale data on screen.
-        /// </summary>
+        /**
+         * Browses a Conan remote already configured on this machine. Tries the standard Conan v2
+         * protocol first (works out of the box for Artifactory, conancenter, a generic
+         * conan_server...); if that comes back empty and the remote's URL matches GitLab's Conan
+         * v2 registry pattern, falls back to GitLab's own Packages REST API, since GitLab's
+         * search endpoint doesn't support a bare "*" wildcard (confirmed: q=* returns nothing,
+         * q=he* works fine) even though its own documentation says it should.
+         *
+         * Returns null specifically when the remote could not be reached at all (as opposed to
+         * being reached but genuinely empty) so the caller can fall back to the local cache
+         * instead of silently keeping stale data on screen.
+         */
         private async Task<Dictionary<string, HashSet<string>>> FetchLibrariesFromConanRemoteAsync(PackageSourceEntry source, bool popUp)
         {
             Dictionary<string, HashSet<string>> libraries = await ConanRemoteHelper.ListAllPackagesAsync(source.RemoteName);
@@ -866,14 +981,14 @@ namespace conan_vs_extension
             return libraries;
         }
 
-        /// <summary>
-        /// GitLab's Packages REST API, keyed to one specific Conan remote's name so each
-        /// GitLab-backed remote can have its own access token (see
-        /// GlobalSettings.GetGitLabTokenForRemote/SetGitLabTokenForRemote). Returns null (rather
-        /// than letting the exception propagate) on any network failure, so the caller can tell
-        /// "remote unreachable" apart from "reachable, 0 packages" and fall back to the local
-        /// cache instead of crashing the refresh or showing stale data.
-        /// </summary>
+        /**
+         * GitLab's Packages REST API, keyed to one specific Conan remote's name so each
+         * GitLab-backed remote can have its own access token (see
+         * GlobalSettings.GetGitLabTokenForRemote/SetGitLabTokenForRemote). Returns null (rather
+         * than letting the exception propagate) on any network failure, so the caller can tell
+         * "remote unreachable" apart from "reachable, 0 packages" and fall back to the local
+         * cache instead of crashing the refresh or showing stale data.
+         */
         private async Task<Dictionary<string, HashSet<string>>> FetchLibrariesFromGitLabPackagesApiAsync(string baseUrl, string projectId, string remoteName, bool popUp)
         {
             string token = GlobalSettings.GetGitLabTokenForRemote(remoteName);
@@ -940,6 +1055,9 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Parses recipe references (e.g. "zlib/1.3.1@_/_" or "hello/1.0@mycompany/stable") into a name -> set-of-versions map, using pattern to split name from version(+user/channel).
+         */
         private Dictionary<string, HashSet<string>> ParseRecipeReferences(IEnumerable<string> recipeRefs, string pattern)
         {
             var libraries = new Dictionary<string, HashSet<string>>();
@@ -963,6 +1081,9 @@ namespace conan_vs_extension
             return libraries;
         }
 
+        /**
+         * Serializes a name -> versions map to `%UserProfile%\.conan-vs-extension\targets-data.json`, the on-disk cache LoadLibrariesFromJsonAsync reads back.
+         */
         private void WriteLibrariesJson(Dictionary<string, HashSet<string>> libraries)
         {
             string userConanFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".conan-vs-extension");
@@ -988,6 +1109,9 @@ namespace conan_vs_extension
             File.WriteAllText(jsonFilePath, formattedJson);
         }
 
+        /**
+         * The refresh (🔄) button: re-fetches the package list from the current source, with result/error message boxes.
+         */
         private void Update_Click(object sender, RoutedEventArgs e)
         {
             _ = UpdateJsonDataAsync(true);

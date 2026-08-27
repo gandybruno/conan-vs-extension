@@ -10,18 +10,35 @@ using System.Windows;
 
 namespace conan_vs_extension
 {
+    /**
+     * Translates a Visual C++ project's build configurations into Conan "host profile" files
+     * (one per configuration, under the project's `.conan\` folder) - the arch/compiler/
+     * build_type settings Conan needs to resolve the exact same binaries MSVC is about to build,
+     * so `conan install` fetches (or builds) matching prebuilt packages instead of source-only
+     * ones. Profiles are only regenerated when their computed content actually changed, and a
+     * `.runconan` marker file is dropped alongside so the pre-build script (see
+     * ProjectConfigurationManager) knows to re-run `conan install`.
+     */
     public class ConanProfilesManager
     {
-        
+
         public ConanProfilesManager()
         {
         }
 
+        /**
+         * Turns a VCConfiguration's name (e.g. "Debug|x64") into a filesystem-safe profile file name (e.g. "Debug_x64").
+         */
         public static string getProfileName(VCConfiguration vcConfig)
         {
             return vcConfig.Name.Replace("|", "_");
         }
 
+        /**
+         * Maps an MSBuild platform name to the Conan `arch` setting.
+         *
+         * @throws KeyNotFoundException The platform isn't one of "x64", "Win32", "ARM64" (e.g. a plain 32-bit "ARM" project).
+         */
         private string getConanArch(string platform)
         {
             var archMap = new Dictionary<string, string>();
@@ -31,6 +48,11 @@ namespace conan_vs_extension
             return archMap[platform];
         }
 
+        /**
+         * Maps the project's PlatformToolset (and, for VS 17.10+, the exact MSBuild version) to the Conan `compiler.version` setting for `compiler=msvc`. See https://docs.conan.io/2/reference/config_files/settings.html.
+         *
+         * @throws NotSupportedException The toolset isn't one this extension has a known mapping for yet.
+         */
         private string getConanCompilerVersion(string platformToolset, string vsVersion)
         {
             if (Version.TryParse(vsVersion, out Version parsedVersion))
@@ -61,6 +83,9 @@ namespace conan_vs_extension
             return compilerVersion;
         }
 
+        /**
+         * Maps the project's Runtime Library setting (/MT, /MD, ...) to the Conan `compiler.runtime` setting ("static" or "dynamic").
+         */
         private string GetRuntimeLibraryType(runtimeLibraryOption runtimeLibraryValue)
         {
             switch (runtimeLibraryValue)
@@ -77,6 +102,9 @@ namespace conan_vs_extension
         }
 
 
+        /**
+         * Maps the project's "C++ Language Standard" setting to the Conan `compiler.cppstd` value ("14", "17", "20", "23"). See https://learn.microsoft.com/cpp/build/reference/std-specify-language-standard-version.
+         */
         private string getConanCppstd(string languageStandard)
         {
             // https://learn.microsoft.com/en-us/cpp/build/reference/std-specify-language-standard-version?view=msvc-170
@@ -98,6 +126,16 @@ namespace conan_vs_extension
             return "null";
         }
 
+        /**
+         * Writes one Conan profile file per build configuration of project
+         * (under its `.conan\` folder), only if the project already opted into Conan (has a
+         * `conandata.yml`). Unwritable/unrecognized configurations (e.g. an unmapped
+         * PlatformToolset) are collected and reported in a single message box at the end rather
+         * than aborting the whole loop, so one bad configuration never blocks profile generation
+         * for the others.
+         *
+         * @param project The EnvDTE project to generate profiles for.
+         */
         public void GenerateProfilesForProject(Project project)
         {
             ThreadHelper.ThrowIfNotOnUIThread();

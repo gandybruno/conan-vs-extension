@@ -15,13 +15,26 @@ using VSLangProj;
 
 namespace conan_vs_extension
 {
+    /**
+     * Everything involved in wiring a Visual C++ project up to Conan: detecting whether a
+     * project has opted in (conandataFileExists), generating the pre-build script
+     * that used to be the only way `conan install` ran (SaveConanPrebuildEventsAllConfigAsync),
+     * proactively running `conan install` ahead of time instead (EnsureConanPackagesInstalledAsync),
+     * and injecting the resulting `conandeps.props` into the project so MSBuild actually
+     * picks up the installed libraries (InjectConanDepsAsync). Also home to several
+     * small EnvDTE project-tree helpers (GetStartupProject, GetAllProjectsFlat, ...)
+     * used throughout the rest of the extension.
+     */
     public class ProjectConfigurationManager
     {
-        
+
         public ProjectConfigurationManager()
         {
         }
 
+        /**
+         * Whether the project has opted into Conan, i.e. has a `conandata.yml` next to its project file.
+         */
         public static bool conandataFileExists(Project project)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -30,6 +43,9 @@ namespace conan_vs_extension
             return File.Exists(path);
         }
 
+        /**
+         * Adds the generated `conandeps.props` property sheet to every configuration of the project, if it exists on disk and isn't already referenced.
+         */
         public static async Task InjectConanDepsToAllConfigsAsync(Project project)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -50,6 +66,9 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Adds the generated `conandeps.props` property sheet to a single configuration and saves the project, if the props file exists and isn't already referenced. No-op if the project hasn't opted into Conan.
+         */
         public static async Task InjectConanDepsAsync(Project project, VCConfiguration vcConfig)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -72,6 +91,9 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Adds propsFilePath as a property sheet of vcConfig, unless it's already one.
+         */
         private static void InjectConanDepsToConfig(VCConfiguration vcConfig, string propsFilePath)
         {
             bool isAlreadyIncluded = false;
@@ -90,6 +112,9 @@ namespace conan_vs_extension
             }
         }
         
+        /**
+         * Path to the MSBuild property sheet Conan's MSBuildDeps generator writes (`<project>\conan\conandeps.props`).
+         */
         private static string GetPropsFilePath(Project project)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -98,6 +123,16 @@ namespace conan_vs_extension
             return Path.Combine(projectDirectory, "conan", "conandeps.props");
         }
 
+        /**
+         * Writes `.conan\conan_install.bat` - a change-detecting wrapper around `conan
+         * install` used by the pre-build event (see SaveConanPrebuildEventAsync).
+         * It compares conandata.yml/conanfile.py/version.txt (and a `.runconan` marker
+         * written whenever a profile changes) against snapshots taken after the last successful
+         * install, and only re-runs `conan install` when something actually changed - deliberately
+         * failing the build the first time it does, since Conan needs to run and MSBuild pick up
+         * the result before the same build can succeed (see EnsureConanPackagesInstalledAsync
+         * for how this extension avoids that "build twice" cycle in the common case).
+         */
         private static async Task GenerateConanInstallScriptAsync(Project project)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -204,6 +239,9 @@ echo No changes detected, skipping conan install...
             File.WriteAllText(scriptPath, conanCommandContents);
         }
 
+        /**
+         * Adds a call to `conan_install.bat` to the configuration's pre-build event command line, unless one is already present.
+         */
         private static async Task SaveConanPrebuildEventAsync(Project project, VCConfiguration vcConfig)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -224,6 +262,9 @@ echo No changes detected, skipping conan install...
             }
         }
 
+        /**
+         * (Re)generates `conan_install.bat` and wires its pre-build event into every configuration of the project. No-op if the project hasn't opted into Conan.
+         */
         public static async Task SaveConanPrebuildEventsAllConfigAsync(Project project)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -243,19 +284,24 @@ echo No changes detected, skipping conan install...
             }
         }
 
-        /// <summary>
-        /// Runs `conan install` for one project/configuration right away (add a package, open a
-        /// project, switch the active configuration/profile - see BuildEventsHandler and
-        /// ConanPackageManagerControl for the call sites) instead of only doing it lazily from the
-        /// pre-build event script during an actual Build. That pre-build script (see
-        /// GenerateConanInstallScriptAsync) intentionally fails the build with "please relaunch"
-        /// the first time it detects a change, precisely because Conan hadn't run yet and the
-        /// generated conandeps.props wasn't wired into the project - forcing a second build. Doing
-        /// the same work here, ahead of time, means that by the time the user actually clicks
-        /// Build, the pre-build script finds nothing new to do and the build succeeds on the first
-        /// try. The pre-build script is left in place as a safety net for configurations that
-        /// weren't proactively handled (e.g. building a configuration that was never made active).
-        /// </summary>
+        /**
+         * Runs `conan install` for one project/configuration right away (add a package, open a
+         * project, switch the active configuration/profile - see BuildEventsHandler and
+         * ConanPackageManagerControl for the call sites) instead of only doing it lazily from the
+         * pre-build event script during an actual Build. That pre-build script (see
+         * GenerateConanInstallScriptAsync) intentionally fails the build with "please relaunch"
+         * the first time it detects a change, precisely because Conan hadn't run yet and the
+         * generated conandeps.props wasn't wired into the project - forcing a second build. Doing
+         * the same work here, ahead of time, means that by the time the user actually clicks
+         * Build, the pre-build script finds nothing new to do and the build succeeds on the first
+         * try. The pre-build script is left in place as a safety net for configurations that
+         * weren't proactively handled (e.g. building a configuration that was never made active).
+         *
+         * @param project The project to install Conan packages for.
+         * @param vcConfig The specific build configuration to generate/install for (its Conan profile - see ConanProfilesManager.getProfileName).
+         * @param showErrors Reserved for callers that want to react to failures beyond reading LastConanInstallError - not currently used to change this method's own behavior (it never shows UI itself either way).
+         * @return True if `conan install` succeeded (or there was nothing to do); false if it failed - see LastConanInstallError for why.
+         */
         public static async Task<bool> EnsureConanPackagesInstalledAsync(Project project, VCConfiguration vcConfig, bool showErrors)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -292,13 +338,23 @@ echo No changes detected, skipping conan install...
             return true;
         }
 
-        /// <summary>
-        /// Set by <see cref="EnsureConanPackagesInstalledAsync"/> right before it returns false, so
-        /// a caller that wants to surface the error (e.g. after an explicit "Install" click) can
-        /// read it without needing conan install's raw process plumbing.
-        /// </summary>
+        /**
+         * Set by EnsureConanPackagesInstalledAsync right before it returns false, so
+         * a caller that wants to surface the error (e.g. after an explicit "Install" click) can
+         * read it without needing conan install's raw process plumbing.
+         */
         public static string LastConanInstallError { get; private set; }
 
+        /**
+         * Runs `conan install . -pr:h=<profile> -pr:b=default --build=missing` for one project
+         * directory/profile, streaming its stdout/stderr line-by-line into ConanOutputPane
+         * as they arrive (rather than only showing the full output once the process exits - a
+         * `--build=missing` compiling a large binary from source can otherwise look frozen for
+         * several minutes). Bounded by a 5-minute timeout, after which the process is killed and
+         * treated as a failure so the UI never gets stuck waiting indefinitely.
+         *
+         * @return (true, null) on success; (false, an error message built from stderr/stdout or the timeout/exception) otherwise.
+         */
         private static async Task<(bool success, string error)> RunConanInstallProcessAsync(string projectDirectory, string profileName)
         {
             string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
@@ -391,13 +447,13 @@ echo No changes detected, skipping conan install...
             }
         }
 
-        /// <summary>
-        /// Mirrors the bookkeeping the pre-build script (conan_install.bat) does at the end of a
-        /// successful run: snapshot conandata.yml/conanfile.py/version.txt into the ".conan"
-        /// folder under this configuration's key, and clear the ".runconan" marker. Doing this
-        /// here too means the script's own change-detection correctly finds nothing to do the next
-        /// time an actual Build triggers it for this same configuration.
-        /// </summary>
+        /**
+         * Mirrors the bookkeeping the pre-build script (conan_install.bat) does at the end of a
+         * successful run: snapshot conandata.yml/conanfile.py/version.txt into the ".conan"
+         * folder under this configuration's key, and clear the ".runconan" marker. Doing this
+         * here too means the script's own change-detection correctly finds nothing to do the next
+         * time an actual Build triggers it for this same configuration.
+         */
         private static void UpdateConanControlFiles(string projectDirectory, string configKey)
         {
             string conanFolder = Path.Combine(projectDirectory, ".conan");
@@ -427,10 +483,10 @@ echo No changes detected, skipping conan install...
             }
         }
 
-        /// <summary>
-        /// Flattens every project in the solution (recursing into solution folders), used to
-        /// proactively run Conan installs for every Conan-enabled project when the solution opens.
-        /// </summary>
+        /**
+         * Flattens every project in the solution (recursing into solution folders), used to
+         * proactively run Conan installs for every Conan-enabled project when the solution opens.
+         */
         public static List<Project> GetAllProjectsFlat(DTE dte)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -449,6 +505,9 @@ echo No changes detected, skipping conan install...
             return result;
         }
 
+        /**
+         * Recursion helper for GetAllProjectsFlat: adds project to result, or recurses into its children if it's a solution folder.
+         */
         private static void CollectProjectsRecursive(Project project, List<Project> result)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -477,6 +536,9 @@ echo No changes detected, skipping conan install...
             }
         }
 
+        /**
+         * Finds the VCConfiguration matching the project's currently active configuration/platform (the toolbar dropdowns), if any.
+         */
         public static VCConfiguration GetActiveVCConfiguration(Project project)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -503,6 +565,11 @@ echo No changes detected, skipping conan install...
             return null;
         }
 
+        /**
+         * Resolves the solution's configured startup project (Solution Properties > Startup Project), searching recursively through solution folders.
+         *
+         * @return The startup project, or null if none is set or it can't be found.
+         */
         public static Project GetStartupProject(DTE dte)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -529,7 +596,9 @@ echo No changes detected, skipping conan install...
             return null; // No startup project found
         }
 
-        // Helper function to find the project by name recursively
+        /**
+         * Recursion helper: returns project (or one of its children, if it's a solution folder) whose `UniqueName` matches projectName.
+         */
         private static Project FindProjectByNameRecursive(Project project, string projectName)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -557,6 +626,9 @@ echo No changes detected, skipping conan install...
             return null;
         }
 
+        /**
+         * Finds a project anywhere in the solution (including inside solution folders) by its `UniqueName`.
+         */
         public static Project GetProjectByName(DTE dte, string name)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -573,6 +645,9 @@ echo No changes detected, skipping conan install...
             return null;
         }
 
+        /**
+         * Finds the VCConfiguration matching a given configuration name/platform pair (as reported by EnvDTE build events, e.g. "Debug"/"x64").
+         */
         public static VCConfiguration GetVCConfig(Project project, string ProjectConfig, string Platform)
         {
             ThreadHelper.ThrowIfNotOnUIThread();

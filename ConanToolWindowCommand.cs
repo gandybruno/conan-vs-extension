@@ -9,32 +9,33 @@ using Task = System.Threading.Tasks.Task;
 
 namespace conan_vs_extension
 {
-    /// <summary>
-    /// Command handler
-    /// </summary>
+    /**
+     * Command handler
+     */
     internal sealed class ConanToolWindowCommand
     {
-        /// <summary>
-        /// Command ID.
-        /// </summary>
+        /**
+         * Command ID.
+         */
         public const int CommandId = 0x0100;
 
-        /// <summary>
-        /// Command menu group (command set GUID).
-        /// </summary>
+        /**
+         * Command menu group (command set GUID).
+         */
         public static readonly Guid CommandSet = new Guid("3e9359cf-7e7a-4e99-8c6d-254264e59580");
 
-        /// <summary>
-        /// VS Package that provides this command, not null.
-        /// </summary>
+        /**
+         * VS Package that provides this command, not null.
+         */
         private readonly AsyncPackage package;
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ConanToolWindowCommand"/> class.
-        /// Adds our command handlers for menu (commands must exist in the command table file)
-        /// </summary>
-        /// <param name="package">Owner package, not null.</param>
-        /// <param name="commandService">Command service to add command to, not null.</param>
+        /**
+         * Initializes a new instance of the ConanToolWindowCommand class.
+         * Adds our command handlers for menu (commands must exist in the command table file)
+         *
+         * @param package Owner package, not null.
+         * @param commandService Command service to add command to, not null.
+         */
         private ConanToolWindowCommand(AsyncPackage package, OleMenuCommandService commandService)
         {
             this.package = package ?? throw new ArgumentNullException(nameof(package));
@@ -45,18 +46,18 @@ namespace conan_vs_extension
             commandService.AddCommand(menuItem);
         }
 
-        /// <summary>
-        /// Gets the instance of the command.
-        /// </summary>
+        /**
+         * Gets the instance of the command.
+         */
         public static ConanToolWindowCommand Instance
         {
             get;
             private set;
         }
 
-        /// <summary>
-        /// Gets the service provider from the owner package.
-        /// </summary>
+        /**
+         * Gets the service provider from the owner package.
+         */
         private Microsoft.VisualStudio.Shell.IAsyncServiceProvider ServiceProvider
         {
             get
@@ -65,10 +66,11 @@ namespace conan_vs_extension
             }
         }
 
-        /// <summary>
-        /// Initializes the singleton instance of the command.
-        /// </summary>
-        /// <param name="package">Owner package, not null.</param>
+        /**
+         * Initializes the singleton instance of the command.
+         *
+         * @param package Owner package, not null.
+         */
         public static async Task InitializeAsync(AsyncPackage package)
         {
             // Switch to the main thread - the call to AddCommand in ConanToolWindowCommand's constructor requires
@@ -79,13 +81,14 @@ namespace conan_vs_extension
             Instance = new ConanToolWindowCommand(package, commandService);
         }
 
-        /// <summary>
-        /// Opens the NuGet-style Conan Package Manager as a document window (an editor-style tab),
-        /// scoped to the selected project (falling back to the solution's startup project),
-        /// the same way "Manage NuGet Packages..." opens per-project.
-        /// </summary>
-        /// <param name="sender">The event sender.</param>
-        /// <param name="e">The event args.</param>
+        /**
+         * Opens the NuGet-style Conan Package Manager as a document window (an editor-style tab),
+         * scoped to the selected project (falling back to the solution's startup project),
+         * the same way "Manage NuGet Packages..." opens per-project.
+         *
+         * @param sender The event sender.
+         * @param e The event args.
+         */
         private void Execute(object sender, EventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -112,10 +115,10 @@ namespace conan_vs_extension
             OpenPackageManagerDocumentWindow(project);
         }
 
-        /// <summary>
-        /// Resolves the currently selected project in Solution Explorer, if any. Mirrors what
-        /// right-clicking a project node and choosing "Manage NuGet Packages..." resolves to.
-        /// </summary>
+        /**
+         * Resolves the currently selected project in Solution Explorer, if any. Mirrors what
+         * right-clicking a project node and choosing "Manage NuGet Packages..." resolves to.
+         */
         private static Project GetSelectedProject(DTE dte)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -142,12 +145,12 @@ namespace conan_vs_extension
             return null;
         }
 
-        /// <summary>
-        /// Opens (or creates) the document window hosting <see cref="ConanPackageManagerControl"/>
-        /// for the given project, following the same IVsUIShell.CreateDocumentWindow pattern NuGet's
-        /// own NuGetPackage.CreateDocWindowAsync uses to open "Manage NuGet Packages..." as a tab in
-        /// the main editing area instead of a docked tool window.
-        /// </summary>
+        /**
+         * Opens (or creates) the document window hosting ConanPackageManagerControl
+         * for the given project, following the same IVsUIShell.CreateDocumentWindow pattern NuGet's
+         * own NuGetPackage.CreateDocWindowAsync uses to open "Manage NuGet Packages..." as a tab in
+         * the main editing area instead of a docked tool window.
+         */
         private void OpenPackageManagerDocumentWindow(Project project)
         {
             ThreadHelper.ThrowIfNotOnUIThread();

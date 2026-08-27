@@ -5,12 +5,12 @@ using Microsoft.VisualStudio.Shell;
 
 namespace conan_vs_extension
 {
-    /// <summary>
-    /// Hosts <see cref="ConanPackageSourcesControl"/> (a WPF UserControl) inside the WinForms-based
-    /// Tools &gt; Options dialog via an <see cref="ElementHost"/> - the same technique NuGet itself
-    /// uses for its own "Package Sources" page, since DialogPage's default UI is a plain
-    /// PropertyGrid and can't host a custom grid/buttons layout on its own.
-    /// </summary>
+    /**
+     * Hosts ConanPackageSourcesControl (a WPF UserControl) inside the WinForms-based
+     * Tools > Options dialog via an ElementHost - the same technique NuGet itself
+     * uses for its own "Package Sources" page, since DialogPage's default UI is a plain
+     * PropertyGrid and can't host a custom grid/buttons layout on its own.
+     */
     [Guid(GuidList.strConanPackageSourcesOptionsPage)]
     public class ConanPackageSourcesOptionsPage : DialogPage
     {

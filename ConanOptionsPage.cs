@@ -5,6 +5,14 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
+/**
+ * Tools > Options > Conan Package Manager > General - lets the user point the extension at
+ * a specific `conan` executable (or the one on the system PATH). The package source itself
+ * (JFrog/GitLab URL, tokens...) is configured separately, per Conan remote, via
+ * ConanPackageSourcesOptionsPage - the properties on this page whose
+ * `[Browsable(false)]`-marked below exist only to reuse DialogPage's built-in
+ * persistence for internal state that also needs to survive across Visual Studio sessions.
+ */
 [Guid(GuidList.strConanOptionsPage)]
 public class ConanOptionsPage : DialogPage
 {
@@ -14,13 +22,13 @@ public class ConanOptionsPage : DialogPage
     private string _selectedPackageSourceName = string.Empty;
     private string _gitLabRemoteTokensRaw = string.Empty;
 
-    /// <summary>
-    /// Refreshes every field from GlobalSettings right before the Options dialog is shown, so
-    /// values discovered/entered purely at runtime this session - the auto-detected GitLab
-    /// URL/project ID, per-remote tokens typed into the "browse" prompt - show up here and get
-    /// persisted to disk if the user clicks OK, instead of only living in memory for the
-    /// current Visual Studio session.
-    /// </summary>
+    /**
+     * Refreshes every field from GlobalSettings right before the Options dialog is shown, so
+     * values discovered/entered purely at runtime this session - the auto-detected GitLab
+     * URL/project ID, per-remote tokens typed into the "browse" prompt - show up here and get
+     * persisted to disk if the user clicks OK, instead of only living in memory for the
+     * current Visual Studio session.
+     */
     protected override void OnActivate(CancelEventArgs e)
     {
         base.OnActivate(e);
@@ -99,6 +107,9 @@ public class ConanOptionsPage : DialogPage
         }
     }
 
+    /**
+     * Backs the "..." browse button the property grid renders for ConanExecutablePath, opening a standard "choose an .exe" file picker.
+     */
     public class ExecutablePathEditor : System.Drawing.Design.UITypeEditor
     {
         public override System.Drawing.Design.UITypeEditorEditStyle GetEditStyle(ITypeDescriptorContext context)

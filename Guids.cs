@@ -1,7 +1,15 @@
 namespace conan_vs_extension
 {
+	/**
+	 * Central list of every GUID this extension needs to reference by its raw string form
+	 * (option page registration, the document-window "editor type" tag) rather than as a
+	 * strongly-typed System.Guid constant.
+	 */
 	static class GuidList
 	{
+		/**
+		 * "Conan Package Manager > General" options page (ConanOptionsPage) - also used to open Tools > Options directly on this page via `dte.ExecuteCommand("Tools.Options", ...)`.
+		 */
 		public const string strConanOptionsPage = "188e5905-b7fe-4f68-a738-46e4a698caac";
 
 		// "Conan Package Manager > Package Sources" options page - the NuGet-style remote

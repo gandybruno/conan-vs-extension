@@ -9,26 +9,26 @@ using System.Threading.Tasks;
 
 namespace conan_vs_extension
 {
-    /// <summary>
-    /// Beyond the build events it was originally built for, this class also proactively runs
-    /// `conan install` at the moments a user would expect packages to just be there - the solution
-    /// opening, a project being added, and the active configuration/profile changing - instead of
-    /// only doing it lazily from the pre-build event script during an actual Build (which used to
-    /// force a "build once just to run conan install, build again for real" cycle. See
-    /// ProjectConfigurationManager.EnsureConanPackagesInstalledAsync for why.
-    ///
-    /// Those proactive installs run in the background (e.g. right after switching the active
-    /// configuration/profile), so a Build the user starts immediately afterwards could previously
-    /// race with a Conan install that hadn't finished yet - Conan and MSBuild both touching the
-    /// project's generated files/props at the same time, which is almost certainly why a build
-    /// started "too fast" after a Debug/Release switch could fail outright (e.g. link.exe unable
-    /// to write a file with a mapped section still open on it). Every proactive install here is
-    /// registered with <see cref="ConanInstallTracker"/> - the SAME registry a user-initiated
-    /// install/removal from the package manager window also registers with - and
-    /// <see cref="UpdateSolution_Begin"/> (the very first thing that fires when a Build starts, for
-    /// the whole solution) blocks until every one of them has finished, exactly like CMake Tools
-    /// makes a Build wait for an in-flight configure/generate.
-    /// </summary>
+    /**
+     * Beyond the build events it was originally built for, this class also proactively runs
+     * `conan install` at the moments a user would expect packages to just be there - the solution
+     * opening, a project being added, and the active configuration/profile changing - instead of
+     * only doing it lazily from the pre-build event script during an actual Build (which used to
+     * force a "build once just to run conan install, build again for real" cycle. See
+     * ProjectConfigurationManager.EnsureConanPackagesInstalledAsync for why.
+     *
+     * Those proactive installs run in the background (e.g. right after switching the active
+     * configuration/profile), so a Build the user starts immediately afterwards could previously
+     * race with a Conan install that hadn't finished yet - Conan and MSBuild both touching the
+     * project's generated files/props at the same time, which is almost certainly why a build
+     * started "too fast" after a Debug/Release switch could fail outright (e.g. link.exe unable
+     * to write a file with a mapped section still open on it). Every proactive install here is
+     * registered with ConanInstallTracker - the SAME registry a user-initiated
+     * install/removal from the package manager window also registers with - and
+     * UpdateSolution_Begin (the very first thing that fires when a Build starts, for
+     * the whole solution) blocks until every one of them has finished, exactly like CMake Tools
+     * makes a Build wait for an in-flight configure/generate.
+     */
     public class BuildEventsHandler : IVsUpdateSolutionEvents
     {
         private readonly DTE _dte;
@@ -137,13 +137,13 @@ namespace conan_vs_extension
             }
         }
 
-        /// <summary>
-        /// Regenerates this project's Conan profile(s) and runs `conan install` for its currently
-        /// active configuration right away - used when the solution opens, a project is added, or
-        /// the active configuration/platform changes. Errors are logged rather than shown (there's
-        /// no explicit user action to attach a message box to here); the pre-build event script
-        /// remains as a safety net and will retry on the next actual Build regardless.
-        /// </summary>
+        /**
+         * Regenerates this project's Conan profile(s) and runs `conan install` for its currently
+         * active configuration right away - used when the solution opens, a project is added, or
+         * the active configuration/platform changes. Errors are logged rather than shown (there's
+         * no explicit user action to attach a message box to here); the pre-build event script
+         * remains as a safety net and will retry on the next actual Build regardless.
+         */
         private async Task InstallConanPackagesForProjectAsync(Project project)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -174,12 +174,12 @@ namespace conan_vs_extension
 
         #region IVsUpdateSolutionEvents
 
-        /// <summary>
-        /// Fires when the user switches the active configuration/platform in the toolbar (or a
-        /// project's active config changes for any other reason) - the moment that decides which
-        /// Conan profile applies. Proactively installs for the newly active configuration so the
-        /// next Build doesn't have to.
-        /// </summary>
+        /**
+         * Fires when the user switches the active configuration/platform in the toolbar (or a
+         * project's active config changes for any other reason) - the moment that decides which
+         * Conan profile applies. Proactively installs for the newly active configuration so the
+         * next Build doesn't have to.
+         */
         public int OnActiveProjectCfgChange(IVsHierarchy pIVsHierarchy)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -202,22 +202,22 @@ namespace conan_vs_extension
             return VSConstants.S_OK;
         }
 
-        /// <summary>
-        /// The first thing that fires when the user starts a Build, for the whole solution -
-        /// before any project's compile/link actually begins. If a Conan install/update is still
-        /// running at this point, this Build attempt is CANCELLED outright (pfCancelUpdate = 1)
-        /// rather than blocked on the spot.
-        ///
-        /// An earlier version tried to block by synchronously Join()-ing the pending install here,
-        /// which pumps the UI message queue while still inside this Solution Build Manager
-        /// callback. That turned out to be unsafe: pumping messages mid-callback can let another
-        /// message/command re-enter the build manager (or other shell state) while it's only
-        /// half-initialized, and was almost certainly what crashed Visual Studio outright. Cancelling
-        /// is safe (no message pumping involved) - we just asynchronously wait for the pending
-        /// install(s) afterwards and re-issue the Build ourselves once they're done, which produces
-        /// the same "wait for Conan, then build" behavior for the user without touching the message
-        /// loop from inside the callback.
-        /// </summary>
+        /**
+         * The first thing that fires when the user starts a Build, for the whole solution -
+         * before any project's compile/link actually begins. If a Conan install/update is still
+         * running at this point, this Build attempt is CANCELLED outright (pfCancelUpdate = 1)
+         * rather than blocked on the spot.
+         *
+         * An earlier version tried to block by synchronously Join()-ing the pending install here,
+         * which pumps the UI message queue while still inside this Solution Build Manager
+         * callback. That turned out to be unsafe: pumping messages mid-callback can let another
+         * message/command re-enter the build manager (or other shell state) while it's only
+         * half-initialized, and was almost certainly what crashed Visual Studio outright. Cancelling
+         * is safe (no message pumping involved) - we just asynchronously wait for the pending
+         * install(s) afterwards and re-issue the Build ourselves once they're done, which produces
+         * the same "wait for Conan, then build" behavior for the user without touching the message
+         * loop from inside the callback.
+         */
         public int UpdateSolution_Begin(ref int pfCancelUpdate)
         {
             ThreadHelper.ThrowIfNotOnUIThread();

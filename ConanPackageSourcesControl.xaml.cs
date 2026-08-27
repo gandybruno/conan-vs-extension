@@ -8,15 +8,15 @@ using Microsoft.VisualStudio.Shell;
 
 namespace conan_vs_extension
 {
-    /// <summary>
-    /// NuGet-style "Package Sources" grid, hosted inside Tools &gt; Options &gt; Conan Package
-    /// Manager &gt; Package Sources (see <see cref="ConanPackageSourcesOptionsPage"/>). Unlike
-    /// NuGet's sources - which NuGet itself stores in NuGet.Config - Conan's remotes are entirely
-    /// owned and persisted by Conan itself (`conan remote add/remove/update/enable/disable`), so
-    /// every action here just shells out to the same CLI a terminal would use, then re-reads
-    /// `conan remote list` to refresh the grid. There is no separate plugin-side storage to keep in
-    /// sync - Conan's own remotes.json is the single source of truth.
-    /// </summary>
+    /**
+     * NuGet-style "Package Sources" grid, hosted inside Tools > Options > Conan Package
+     * Manager > Package Sources (see ConanPackageSourcesOptionsPage). Unlike
+     * NuGet's sources - which NuGet itself stores in NuGet.Config - Conan's remotes are entirely
+     * owned and persisted by Conan itself (`conan remote add/remove/update/enable/disable`), so
+     * every action here just shells out to the same CLI a terminal would use, then re-reads
+     * `conan remote list` to refresh the grid. There is no separate plugin-side storage to keep in
+     * sync - Conan's own remotes.json is the single source of truth.
+     */
     public partial class ConanPackageSourcesControl : UserControl
     {
         private readonly ObservableCollection<ConanRemoteHelper.ConanRemote> _remotes =
@@ -43,6 +43,9 @@ namespace conan_vs_extension
             Loaded += (s, e) => _ = RefreshRemotesAsync();
         }
 
+        /**
+         * Injects a fixed light color palette as local resources under the same VsBrushes keys the XAML's DynamicResource bindings reference (see the constructor's remarks for why).
+         */
         private void ApplyLightTheme()
         {
             var windowBrush = new SolidColorBrush(Colors.White);
@@ -71,6 +74,9 @@ namespace conan_vs_extension
             Foreground = textBrush;
         }
 
+        /**
+         * Reloads the grid from `conan remote list` + `conan remote list-users`, preserving the current selection by name if it still exists afterwards.
+         */
         private async Task RefreshRemotesAsync()
         {
             var remotes = await ConanRemoteHelper.ListRemotesAsync();
@@ -96,6 +102,9 @@ namespace conan_vs_extension
                 : _remotes.FirstOrDefaultByName(selectedName);
         }
 
+        /**
+         * Enables/disables the action buttons and updates their labels ("Activer"/"Désactiver", "Se connecter..."/"Se déconnecter") based on the newly-selected remote.
+         */
         private void RemotesDataGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             _selected = RemotesDataGrid.SelectedItem as ConanRemoteHelper.ConanRemote;
@@ -109,6 +118,13 @@ namespace conan_vs_extension
             LoginButton.Content = hasSelection && !string.IsNullOrEmpty(_selected.User) ? "Se déconnecter" : "Se connecter...";
         }
 
+        /**
+         * The "Se connecter..."/"Se déconnecter" button: if the selected remote already has a
+         * logged-in user, confirms and runs `conan remote logout`; otherwise prompts for
+         * credentials (CredentialsDialog) and runs `conan remote login` (the
+         * password is piped through the child process's stdin, never passed as a command-line
+         * argument - see ConanRemoteHelper.LoginRemoteAsync).
+         */
         private async void LoginButton_Click(object sender, RoutedEventArgs e)
         {
             if (_selected == null)
@@ -158,6 +174,9 @@ namespace conan_vs_extension
             await RefreshRemotesAsync();
         }
 
+        /**
+         * The "Ajouter" button: runs `conan remote add` with the name/URL/SSL fields below the grid, then clears them and refreshes the grid.
+         */
         private async void AddButton_Click(object sender, RoutedEventArgs e)
         {
             string name = NewNameTextBox.Text?.Trim();
@@ -184,6 +203,9 @@ namespace conan_vs_extension
             await RefreshRemotesAsync();
         }
 
+        /**
+         * The "Modifier la source..." button: prompts for a new URL (SSL verification unchanged) and runs `conan remote update`.
+         */
         private async void EditSourceButton_Click(object sender, RoutedEventArgs e)
         {
             if (_selected == null)
@@ -213,6 +235,9 @@ namespace conan_vs_extension
             await RefreshRemotesAsync();
         }
 
+        /**
+         * The "Supprimer" button: confirms, then runs `conan remote remove` (this only removes the remote configuration, never any already-downloaded packages).
+         */
         private async void RemoveButton_Click(object sender, RoutedEventArgs e)
         {
             if (_selected == null)
@@ -242,6 +267,9 @@ namespace conan_vs_extension
             await RefreshRemotesAsync();
         }
 
+        /**
+         * The "Activer"/"Désactiver" button: toggles the remote via `conan remote enable`/`disable` without removing its configuration.
+         */
         private async void EnableDisableButton_Click(object sender, RoutedEventArgs e)
         {
             if (_selected == null)
@@ -264,12 +292,12 @@ namespace conan_vs_extension
         }
     }
 
-    /// <summary>
-    /// Small WinForms prompt (username + masked password) for `conan remote login`, in the same
-    /// spirit as <see cref="MessageBoxWithInput"/> (ConanToolWindowControl.xaml.cs) but with a
-    /// second, masked field - a plain WPF dialog would need its own Window/theme wiring for very
-    /// little benefit here, since this only ever pops up modally from Tools &gt; Options.
-    /// </summary>
+    /**
+     * Small WinForms prompt (username + masked password) for `conan remote login`, in the same
+     * spirit as MessageBoxWithInput (ConanSharedModels.cs) but with a
+     * second, masked field - a plain WPF dialog would need its own Window/theme wiring for very
+     * little benefit here, since this only ever pops up modally from Tools > Options.
+     */
     internal static class CredentialsDialog
     {
         public static (string username, string password)? Show(string message, string remoteName, string defaultUsername = null)
@@ -319,8 +347,14 @@ namespace conan_vs_extension
         }
     }
 
+    /**
+     * Small lookup helper used by ConanPackageSourcesControl.RefreshRemotesAsync to re-find the previously-selected remote by name after reloading the grid.
+     */
     internal static class ConanRemoteCollectionExtensions
     {
+        /**
+         * Case-insensitive lookup by ConanRemoteHelper.ConanRemote.Name.
+         */
         public static ConanRemoteHelper.ConanRemote FirstOrDefaultByName(
             this ObservableCollection<ConanRemoteHelper.ConanRemote> remotes, string name)
         {

@@ -9,22 +9,22 @@ using Newtonsoft.Json.Linq;
 
 namespace conan_vs_extension
 {
-    /// <summary>
-    /// Reads the Conan remotes already configured on this machine (`conan remote list`) so the
-    /// plugin can auto-fill its own GitLab URL / project ID settings instead of requiring the
-    /// user to type them in a second time. Conan already knows the remote's address - it needs it
-    /// for `conan install` - so we just parse it back out of the CLI output.
-    ///
-    /// This intentionally only recovers the URL and project ID. Conan does not expose stored
-    /// remote credentials (PRIVATE-TOKEN / passwords) through `conan remote list` for security
-    /// reasons, so the token still has to be entered manually in Tools > Options.
-    ///
-    /// Also note this only helps populate the settings used for "browse everything" against the
-    /// GitLab Packages REST API (see ConanPackageManagerControl.FetchLibrariesFromGitLabAsync) -
-    /// GitLab's own Conan v2 protocol implementation does not support a real wildcard "list all"
-    /// search (confirmed: `q=*` returns nothing, `q=he*` works fine), so that REST API is still
-    /// needed for the "Parcourir" tab. See the conversation history / README for details.
-    /// </summary>
+    /**
+     * Reads the Conan remotes already configured on this machine (`conan remote list`) so the
+     * plugin can auto-fill its own GitLab URL / project ID settings instead of requiring the
+     * user to type them in a second time. Conan already knows the remote's address - it needs it
+     * for `conan install` - so we just parse it back out of the CLI output.
+     *
+     * This intentionally only recovers the URL and project ID. Conan does not expose stored
+     * remote credentials (PRIVATE-TOKEN / passwords) through `conan remote list` for security
+     * reasons, so the token still has to be entered manually in Tools > Options.
+     *
+     * Also note this only helps populate the settings used for "browse everything" against the
+     * GitLab Packages REST API (see ConanPackageManagerControl.FetchLibrariesFromGitLabAsync) -
+     * GitLab's own Conan v2 protocol implementation does not support a real wildcard "list all"
+     * search (confirmed: `q=*` returns nothing, `q=he*` works fine), so that REST API is still
+     * needed for the "Parcourir" tab. See the conversation history / README for details.
+     */
     public static class ConanRemoteHelper
     {
         public class ConanRemote
@@ -34,10 +34,10 @@ namespace conan_vs_extension
             public bool Enabled { get; set; } = true;
             public bool VerifySsl { get; set; } = true;
 
-            /// <summary>
-            /// The username currently authenticated on this remote (`conan remote list-users`),
-            /// or null/empty if anonymous - i.e. whether `conan remote login` was ever run for it.
-            /// </summary>
+            /**
+             * The username currently authenticated on this remote (`conan remote list-users`),
+             * or null/empty if anonymous - i.e. whether `conan remote login` was ever run for it.
+             */
             public string User { get; set; }
         }
 
@@ -51,10 +51,10 @@ namespace conan_vs_extension
             @"^(?<base>https?://[^/]+)/api/v4/projects/(?<projectId>[^/?]+)/packages/conan/?$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        /// <summary>
-        /// Runs `conan remote list` and parses the configured remotes (name + URL).
-        /// Returns an empty list (never throws) if conan isn't configured/reachable.
-        /// </summary>
+        /**
+         * Runs `conan remote list` and parses the configured remotes (name + URL).
+         * Returns an empty list (never throws) if conan isn't configured/reachable.
+         */
         public static async Task<List<ConanRemote>> ListRemotesAsync()
         {
             var remotes = new List<ConanRemote>();
@@ -107,12 +107,12 @@ namespace conan_vs_extension
             return remotes;
         }
 
-        /// <summary>
-        /// Looks for a configured Conan remote whose URL matches GitLab's Conan v2 registry
-        /// pattern (".../api/v4/projects/{id}/packages/conan") and, if found, returns the base
-        /// GitLab URL and project ID to use for the plugin's own GitLab Packages API calls.
-        /// Returns null if no such remote is configured.
-        /// </summary>
+        /**
+         * Looks for a configured Conan remote whose URL matches GitLab's Conan v2 registry
+         * pattern (".../api/v4/projects/{id}/packages/conan") and, if found, returns the base
+         * GitLab URL and project ID to use for the plugin's own GitLab Packages API calls.
+         * Returns null if no such remote is configured.
+         */
         public static async Task<(string baseUrl, string projectId, string remoteName)?> TryDetectGitLabRemoteAsync()
         {
             List<ConanRemote> remotes = await ListRemotesAsync();
@@ -129,16 +129,16 @@ namespace conan_vs_extension
             return null;
         }
 
-        /// <summary>
-        /// Lists every recipe available on a given Conan remote via the standard Conan v2
-        /// protocol (`conan list "*" -r=&lt;remoteName&gt; --format=json`), which works out of the
-        /// box for Artifactory, conancenter, a generic conan_server, etc. Returns null on any
-        /// failure (conan not found, remote unreachable...), and an empty dictionary (not null)
-        /// when the command succeeds but the remote genuinely has 0 matching recipes OR when the
-        /// remote's search implementation doesn't support the bare "*" wildcard (a known GitLab
-        /// limitation) - callers distinguish "genuinely empty" from "wildcard not supported" by
-        /// their own means (e.g. falling back to a vendor-specific API for known URL patterns).
-        /// </summary>
+        /**
+         * Lists every recipe available on a given Conan remote via the standard Conan v2
+         * protocol (`conan list "*" -r=<remoteName> --format=json`), which works out of the
+         * box for Artifactory, conancenter, a generic conan_server, etc. Returns null on any
+         * failure (conan not found, remote unreachable...), and an empty dictionary (not null)
+         * when the command succeeds but the remote genuinely has 0 matching recipes OR when the
+         * remote's search implementation doesn't support the bare "*" wildcard (a known GitLab
+         * limitation) - callers distinguish "genuinely empty" from "wildcard not supported" by
+         * their own means (e.g. falling back to a vendor-specific API for known URL patterns).
+         */
         public static Task<Dictionary<string, HashSet<string>>> ListAllPackagesAsync(string remoteName)
         {
             if (string.IsNullOrWhiteSpace(remoteName))
@@ -149,24 +149,24 @@ namespace conan_vs_extension
             return RunConanListAsync($"list \"*\" -r={remoteName} --format=json");
         }
 
-        /// <summary>
-        /// Lists every recipe already present in the LOCAL Conan cache (`conan list "*" -c
-        /// --format=json`) - i.e. packages already downloaded at some point, that Conan can use
-        /// without reaching any remote at all. Used as the offline fallback when a remote can't be
-        /// reached: showing "what the server has" while offline is misleading, so instead we show
-        /// "what's genuinely usable right now". Returns null only if the `conan` executable itself
-        /// couldn't be run; returns an empty dictionary (not null) if the cache is genuinely empty.
-        /// </summary>
+        /**
+         * Lists every recipe already present in the LOCAL Conan cache (`conan list "*" -c
+         * --format=json`) - i.e. packages already downloaded at some point, that Conan can use
+         * without reaching any remote at all. Used as the offline fallback when a remote can't be
+         * reached: showing "what the server has" while offline is misleading, so instead we show
+         * "what's genuinely usable right now". Returns null only if the `conan` executable itself
+         * couldn't be run; returns an empty dictionary (not null) if the cache is genuinely empty.
+         */
         public static Task<Dictionary<string, HashSet<string>>> ListLocalCachePackagesAsync()
         {
             return RunConanListAsync("list \"*\" -c --format=json");
         }
 
-        /// <summary>
-        /// Shared implementation behind ListAllPackagesAsync (a specific remote, via -r=) and
-        /// ListLocalCachePackagesAsync (the local cache, via -c) - `conan list` returns the exact
-        /// same JSON shape either way, keyed by "Local Cache" or the remote's name.
-        /// </summary>
+        /**
+         * Shared implementation behind ListAllPackagesAsync (a specific remote, via -r=) and
+         * ListLocalCachePackagesAsync (the local cache, via -c) - `conan list` returns the exact
+         * same JSON shape either way, keyed by "Local Cache" or the remote's name.
+         */
         private static async Task<Dictionary<string, HashSet<string>>> RunConanListAsync(string arguments)
         {
             string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
@@ -225,37 +225,45 @@ namespace conan_vs_extension
             }
         }
 
-        /// <summary>
-        /// Adds a new Conan remote (`conan remote add`), same effect as running the command in a
-        /// terminal - lets the "Package Sources" Options page manage remotes NuGet-style instead of
-        /// requiring the user to leave Visual Studio.
-        /// </summary>
+        /**
+         * Adds a new Conan remote (`conan remote add`), same effect as running the command in a
+         * terminal - lets the "Package Sources" Options page manage remotes NuGet-style instead of
+         * requiring the user to leave Visual Studio.
+         */
         public static Task<(bool success, string error)> AddRemoteAsync(string name, string url, bool verifySsl)
         {
             string sslFlag = verifySsl ? string.Empty : " --insecure";
             return RunConanRemoteCommandAsync($"remote add \"{name}\" \"{url}\"{sslFlag}");
         }
 
-        /// <summary>Removes a Conan remote (`conan remote remove`).</summary>
+        /**
+         * Removes a Conan remote (`conan remote remove`).
+         */
         public static Task<(bool success, string error)> RemoveRemoteAsync(string name)
         {
             return RunConanRemoteCommandAsync($"remote remove \"{name}\"");
         }
 
-        /// <summary>Changes a remote's URL and/or SSL verification (`conan remote update`).</summary>
+        /**
+         * Changes a remote's URL and/or SSL verification (`conan remote update`).
+         */
         public static Task<(bool success, string error)> UpdateRemoteUrlAsync(string name, string url, bool verifySsl)
         {
             string sslFlag = verifySsl ? " --secure" : " --insecure";
             return RunConanRemoteCommandAsync($"remote update \"{name}\" --url=\"{url}\"{sslFlag}");
         }
 
-        /// <summary>Enables a previously disabled remote (`conan remote enable`).</summary>
+        /**
+         * Enables a previously disabled remote (`conan remote enable`).
+         */
         public static Task<(bool success, string error)> EnableRemoteAsync(string name)
         {
             return RunConanRemoteCommandAsync($"remote enable \"{name}\"");
         }
 
-        /// <summary>Disables a remote without removing it (`conan remote disable`).</summary>
+        /**
+         * Disables a remote without removing it (`conan remote disable`).
+         */
         public static Task<(bool success, string error)> DisableRemoteAsync(string name)
         {
             return RunConanRemoteCommandAsync($"remote disable \"{name}\"");
@@ -266,12 +274,12 @@ namespace conan_vs_extension
         private static readonly Regex RemoteUsersHeaderRegex = new Regex(@"^(?<name>\S+):\s*$", RegexOptions.Compiled);
         private static readonly Regex RemoteUsersUsernameRegex = new Regex(@"Username:\s*(?<user>\S+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        /// <summary>
-        /// Runs `conan remote list-users` and returns, for every remote that currently has a
-        /// logged-in user, its username - used to show authentication status next to each remote
-        /// in the "Package Sources" Options page. A remote missing from the result is anonymous
-        /// (never logged in, or logged out). Never throws; returns an empty dictionary on failure.
-        /// </summary>
+        /**
+         * Runs `conan remote list-users` and returns, for every remote that currently has a
+         * logged-in user, its username - used to show authentication status next to each remote
+         * in the "Package Sources" Options page. A remote missing from the result is anonymous
+         * (never logged in, or logged out). Never throws; returns an empty dictionary on failure.
+         */
         public static async Task<Dictionary<string, string>> ListRemoteUsersAsync()
         {
             var users = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -323,12 +331,12 @@ namespace conan_vs_extension
             return users;
         }
 
-        /// <summary>
-        /// Authenticates on a remote (`conan remote login`), same effect as running it in a
-        /// terminal. The password is never passed as a command-line argument (which would make it
-        /// visible to anything that can see the process list) - it's piped through the child
-        /// process's standard input instead, exactly like typing it at the interactive prompt.
-        /// </summary>
+        /**
+         * Authenticates on a remote (`conan remote login`), same effect as running it in a
+         * terminal. The password is never passed as a command-line argument (which would make it
+         * visible to anything that can see the process list) - it's piped through the child
+         * process's standard input instead, exactly like typing it at the interactive prompt.
+         */
         public static async Task<(bool success, string error)> LoginRemoteAsync(string name, string username, string password)
         {
             string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
@@ -390,7 +398,9 @@ namespace conan_vs_extension
             }
         }
 
-        /// <summary>Clears a remote's stored authentication (`conan remote logout`).</summary>
+        /**
+         * Clears a remote's stored authentication (`conan remote logout`).
+         */
         public static Task<(bool success, string error)> LogoutRemoteAsync(string name)
         {
             return RunConanRemoteCommandAsync($"remote logout \"{name}\"");
@@ -435,18 +445,18 @@ namespace conan_vs_extension
             public List<string> Topics { get; set; }
         }
 
-        /// <summary>
-        /// Fetches the detail fields ConanCenter/NuGet show for a package (description, license,
-        /// homepage, author, topics) straight from the recipe's own conanfile.py, on the given
-        /// remote. Only the recipe is downloaded (`--only-recipe`, no binaries - this is the same
-        /// lightweight text file ConanCenter's own web page is generated from, typically a few KB,
-        /// nothing like the compiled binary packages), and it is removed from the local cache again
-        /// immediately after being read, so browsing packages in this UI leaves nothing behind in
-        /// `conan cache`. Returns null on any failure (remote unreachable, recipe not found,
-        /// unsupported conan CLI flag, ...); callers treat that as "no details available". Failures
-        /// are logged via Debug.WriteLine (visible in Visual Studio's Output window while debugging
-        /// the extension) since there's no other way to see what conan actually said.
-        /// </summary>
+        /**
+         * Fetches the detail fields ConanCenter/NuGet show for a package (description, license,
+         * homepage, author, topics) straight from the recipe's own conanfile.py, on the given
+         * remote. Only the recipe is downloaded (`--only-recipe`, no binaries - this is the same
+         * lightweight text file ConanCenter's own web page is generated from, typically a few KB,
+         * nothing like the compiled binary packages), and it is removed from the local cache again
+         * immediately after being read, so browsing packages in this UI leaves nothing behind in
+         * `conan cache`. Returns null on any failure (remote unreachable, recipe not found,
+         * unsupported conan CLI flag, ...); callers treat that as "no details available". Failures
+         * are logged via Debug.WriteLine (visible in Visual Studio's Output window while debugging
+         * the extension) since there's no other way to see what conan actually said.
+         */
         public static async Task<RecipeMetadata> GetRecipeMetadataAsync(string libName, string version, string remoteName)
         {
             if (string.IsNullOrWhiteSpace(libName) || string.IsNullOrWhiteSpace(version) || string.IsNullOrWhiteSpace(remoteName))
