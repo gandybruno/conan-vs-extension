@@ -165,6 +165,24 @@ namespace conan_vs_extension
             string documentName = "ConanPackageManager:" + project.UniqueName;
             uint itemId = hierarchy != null ? (uint)VSConstants.VSITEMID.Root : (uint)VSConstants.VSITEMID.Nil;
 
+            // If a document window for this project is already open - e.g. left open from before
+            // the project was reloaded/reopened - CreateDocumentWindow below would otherwise just
+            // re-show that existing frame as-is (same moniker), silently keeping its now-stale
+            // EnvDTE.Project reference and Conan data instead of the fresh one just resolved above.
+            // That's what shows as a blank window until manually closed and reopened. Closing it
+            // here guarantees every invocation creates a brand new window bound to the current,
+            // live Project instance.
+            if (Microsoft.VisualStudio.Shell.VsShellUtilities.IsDocumentOpen(
+                    Microsoft.VisualStudio.Shell.ServiceProvider.GlobalProvider,
+                    documentName,
+                    Guid.Empty,
+                    out IVsUIHierarchy _,
+                    out uint _,
+                    out IVsWindowFrame existingFrame) && existingFrame != null)
+            {
+                existingFrame.CloseFrame((uint)__FRAMECLOSE.FRAMECLOSE_NoSave);
+            }
+
             var control = new ConanPackageManagerControl(project);
             var windowPane = new ConanPackageManagerWindowPane(control);
 
@@ -217,6 +235,22 @@ namespace conan_vs_extension
             if (windowFrame == null)
             {
                 throw new NotSupportedException("Cannot create the Conan Package Manager document window.");
+            }
+
+            // This document window only ever exists for the lifetime it's explicitly opened in -
+            // there's no IVsEditorFactory/IVsPersistDocData behind it that could recreate its
+            // content from scratch. Without this, Visual Studio remembers it was open in the
+            // solution's .suo and tries to auto-reopen it at the next solution load, before this
+            // package (and the command that actually builds the content) has run - which is
+            // exactly the "Opération en cours d'exécution..." placeholder tab stuck forever seen at
+            // startup. Marking it DontAutoOpen tells Visual Studio to just skip restoring it.
+            try
+            {
+                windowFrame.SetProperty((int)__VSFPROPID5.VSFPROPID_DontAutoOpen, true);
+            }
+            catch
+            {
+                // Best-effort - an older VS SDK without this property just keeps the old behavior.
             }
 
             ErrorHandler.ThrowOnFailure(windowFrame.Show());
