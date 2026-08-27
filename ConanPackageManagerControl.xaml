@@ -154,6 +154,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -205,6 +206,8 @@
                         BorderThickness="0" Background="{x:Null}" Padding="4">
                     <Image Source="{StaticResource ic_fluent_arrow_sync_24_regularDrawingImage}" Stretch="None" Width="18" Height="18"/>
                 </Button>
+                <Button x:Name="ShowLogsButton" Content="Logs" ToolTip="Voir les commandes conan exécutées par le plugin (fenêtre Output &gt; Conan)"
+                        Click="ShowLogsButton_Click" Padding="8,2" Margin="6,0,0,0" FontSize="11" Style="{StaticResource ThemedButtonStyle}"/>
                 <Button x:Name="ConfigureConanButton" ToolTip="Configurer Conan" Click="Configuration_Click"
                         BorderThickness="0" Background="{x:Null}" Padding="4" Margin="4,0,0,0">
                     <Image Source="{StaticResource ic_fluent_settings_24_regularDrawingImage}" Stretch="None" Width="18" Height="18"/>
@@ -221,8 +224,19 @@
             </TextBlock>
         </StackPanel>
 
+        <!-- Shown whenever the last refresh could not reach the selected remote (offline, DNS,
+             timeout...) - the list below then comes from the local Conan cache instead, so it must
+             be clear this isn't a live view of what the remote actually has. -->
+        <Border x:Name="OfflineBannerBorder" Visibility="Collapsed" Grid.Row="4" Margin="0,10,0,0" Padding="8,6"
+                Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"
+                BorderBrush="{DynamicResource {x:Static vsshell:VsBrushes.HighlightKey}}" BorderThickness="1">
+            <TextBlock TextWrapping="Wrap" FontWeight="SemiBold">
+                <Run Text="⚠ Remote injoignable (hors ligne ?) — liste affichée depuis le cache Conan local (paquets déjà téléchargés), pas depuis le remote."/>
+            </TextBlock>
+        </Border>
+
         <!-- Main content: package list on the left, details on the right, split 50/50 like NuGet -->
-        <Grid Grid.Row="4" Margin="0,10,0,0">
+        <Grid Grid.Row="5" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="8"/>
@@ -261,6 +275,29 @@
             </Grid>
 
             <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch" Background="Transparent"/>
+
+            <!-- Covers the WHOLE list+details area (not just the list on the left, unlike
+                 LoadingOverlay above) while an Install/Remove is running - that operation can take
+                 several minutes if Conan has to build a binary from source, and the previous
+                 overlay sitting only behind the details column meant the user, looking at the
+                 Install/Remove button they just clicked, saw no feedback at all that anything was
+                 happening. -->
+            <Border x:Name="InstallOperationOverlay" Visibility="Collapsed" Grid.Column="0" Grid.ColumnSpan="3"
+                    Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}" Opacity="0.97"
+                    BorderThickness="1" BorderBrush="{DynamicResource {x:Static vsshell:VsBrushes.ActiveBorderKey}}"
+                    Panel.ZIndex="10">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="360">
+                    <ProgressBar IsIndeterminate="True" Width="220" Height="4" Margin="0,0,0,14"/>
+                    <TextBlock x:Name="InstallOperationStatusText" Text="Installation en cours..."
+                               HorizontalAlignment="Center" TextWrapping="Wrap" FontWeight="SemiBold" TextAlignment="Center"/>
+                    <TextBlock Text="Cela peut prendre plusieurs minutes si Conan doit compiler un binaire depuis les sources."
+                               HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+                               Opacity="0.7" FontSize="11" Margin="0,6,0,0"/>
+                    <TextBlock HorizontalAlignment="Center" TextAlignment="Center" Opacity="0.7" FontSize="11" Margin="0,10,0,0">
+                        <Run Text="Voir le détail : bouton "/><Run Text="Logs" FontWeight="SemiBold"/><Run Text=" (fenêtre Output &gt; Conan)."/>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
 
             <Grid x:Name="DetailsPanel" Grid.Column="2" Visibility="Collapsed" Margin="14,0,0,0">
                 <Grid.RowDefinitions>

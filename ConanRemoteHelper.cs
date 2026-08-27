@@ -133,70 +133,88 @@ namespace conan_vs_extension
         /// limitation) - callers distinguish "genuinely empty" from "wildcard not supported" by
         /// their own means (e.g. falling back to a vendor-specific API for known URL patterns).
         /// </summary>
-        public static async Task<Dictionary<string, HashSet<string>>> ListAllPackagesAsync(string remoteName)
+        public static Task<Dictionary<string, HashSet<string>>> ListAllPackagesAsync(string remoteName)
         {
             if (string.IsNullOrWhiteSpace(remoteName))
             {
-                return null;
+                return Task.FromResult<Dictionary<string, HashSet<string>>>(null);
             }
 
+            return RunConanListAsync($"list \"*\" -r={remoteName} --format=json");
+        }
+
+        /// <summary>
+        /// Lists every recipe already present in the LOCAL Conan cache (`conan list "*" -c
+        /// --format=json`) - i.e. packages already downloaded at some point, that Conan can use
+        /// without reaching any remote at all. Used as the offline fallback when a remote can't be
+        /// reached: showing "what the server has" while offline is misleading, so instead we show
+        /// "what's genuinely usable right now". Returns null only if the `conan` executable itself
+        /// couldn't be run; returns an empty dictionary (not null) if the cache is genuinely empty.
+        /// </summary>
+        public static Task<Dictionary<string, HashSet<string>>> ListLocalCachePackagesAsync()
+        {
+            return RunConanListAsync("list \"*\" -c --format=json");
+        }
+
+        /// <summary>
+        /// Shared implementation behind ListAllPackagesAsync (a specific remote, via -r=) and
+        /// ListLocalCachePackagesAsync (the local cache, via -c) - `conan list` returns the exact
+        /// same JSON shape either way, keyed by "Local Cache" or the remote's name.
+        /// </summary>
+        private static async Task<Dictionary<string, HashSet<string>>> RunConanListAsync(string arguments)
+        {
             string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
                 ? "conan"
                 : GlobalSettings.ConanExecutablePath;
 
-            var psi = new ProcessStartInfo
-            {
-                FileName = conanPath,
-                Arguments = $"list \"*\" -r={remoteName} --format=json",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            ConanOutputPane.Log($"conan {arguments}");
 
             try
             {
-                using (var process = Process.Start(psi))
+                (int exitCode, string output, string stderr) = await RunConanCommandAsync(conanPath, arguments, 20000);
+
+                if (exitCode != 0)
                 {
-                    string output = await process.StandardOutput.ReadToEndAsync();
-                    await Task.Run(() => process.WaitForExit(20000));
-
-                    int jsonStart = output.IndexOf('{');
-                    if (jsonStart < 0)
-                    {
-                        return null;
-                    }
-
-                    JObject root = JObject.Parse(output.Substring(jsonStart));
-                    JProperty remoteProperty = root.Properties().FirstOrDefault();
-                    if (remoteProperty == null || !(remoteProperty.Value is JObject packagesObject))
-                    {
-                        return null;
-                    }
-
-                    var libraries = new Dictionary<string, HashSet<string>>();
-                    var recipeRegex = new Regex(@"^([\w\-.]+)\/([\w\d.\-]+(?:@[\w\-.]+\/[\w\-.]+)?)$");
-
-                    foreach (var prop in packagesObject.Properties())
-                    {
-                        Match match = recipeRegex.Match(prop.Name);
-                        if (match.Success)
-                        {
-                            string libName = match.Groups[1].Value;
-                            string version = match.Groups[2].Value;
-                            if (!libraries.ContainsKey(libName))
-                            {
-                                libraries[libName] = new HashSet<string>();
-                            }
-                            libraries[libName].Add(version);
-                        }
-                    }
-
-                    return libraries;
+                    ConanOutputPane.Log($"  -> échec (code {exitCode}) : {(string.IsNullOrWhiteSpace(stderr) ? output : stderr)}");
                 }
+
+                int jsonStart = output.IndexOf('{');
+                if (jsonStart < 0)
+                {
+                    return null;
+                }
+
+                JObject root = JObject.Parse(output.Substring(jsonStart));
+                JProperty remoteProperty = root.Properties().FirstOrDefault();
+                if (remoteProperty == null || !(remoteProperty.Value is JObject packagesObject))
+                {
+                    return null;
+                }
+
+                var libraries = new Dictionary<string, HashSet<string>>();
+                var recipeRegex = new Regex(@"^([\w\-.]+)\/([\w\d.\-]+(?:@[\w\-.]+\/[\w\-.]+)?)$");
+
+                foreach (var prop in packagesObject.Properties())
+                {
+                    Match match = recipeRegex.Match(prop.Name);
+                    if (match.Success)
+                    {
+                        string libName = match.Groups[1].Value;
+                        string version = match.Groups[2].Value;
+                        if (!libraries.ContainsKey(libName))
+                        {
+                            libraries[libName] = new HashSet<string>();
+                        }
+                        libraries[libName].Add(version);
+                    }
+                }
+
+                ConanOutputPane.Log($"  -> {libraries.Count} bibliothèque(s) trouvée(s).");
+                return libraries;
             }
-            catch
+            catch (Exception ex)
             {
+                ConanOutputPane.Log($"  -> exception : {ex.Message}");
                 return null;
             }
         }
@@ -243,20 +261,25 @@ namespace conan_vs_extension
                 ? "conan"
                 : GlobalSettings.ConanExecutablePath;
 
+            ConanOutputPane.Log($"conan {arguments}");
+
             try
             {
                 (int exitCode, string stdout, string stderr) = await RunConanCommandAsync(conanPath, arguments, 20000);
                 if (exitCode != 0)
                 {
                     string error = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+                    ConanOutputPane.Log($"  -> échec (code {exitCode}) : {error}");
                     System.Diagnostics.Debug.WriteLine($"[ConanRemoteHelper] 'conan {arguments}' failed (exit {exitCode}): {error}");
                     return (false, string.IsNullOrWhiteSpace(error) ? $"conan a retourné le code {exitCode}." : error.Trim());
                 }
 
+                ConanOutputPane.Log("  -> OK");
                 return (true, null);
             }
             catch (Exception ex)
             {
+                ConanOutputPane.Log($"  -> exception : {ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"[ConanRemoteHelper] 'conan {arguments}' threw: {ex}");
                 return (false, ex.Message);
             }
@@ -382,9 +405,28 @@ namespace conan_vs_extension
             {
                 Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
                 Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+                Task readsTask = Task.WhenAll(stdoutTask, stderrTask);
+
+                // Bound the actual wait, not just WaitForExit() afterwards: if `conan` never closes
+                // its output (hangs waiting on a credential prompt, a stalled TLS handshake, a slow
+                // proxy...) ReadToEndAsync alone would never return and the UI would stay stuck on
+                // "chargement" forever, even with a perfectly good internet connection. If we hit
+                // the timeout, kill the process and report it as a failure so callers can fall back
+                // (e.g. to the local cache) instead of hanging.
+                Task completed = await Task.WhenAny(readsTask, Task.Delay(timeoutMs));
+
+                if (completed != readsTask)
+                {
+                    try { process.Kill(); } catch { /* already exited on its own */ }
+                    ConanOutputPane.Log($"  -> délai dépassé ({timeoutMs / 1000}s), processus arrêté.");
+                    return (-1, string.Empty, $"'conan {arguments}' n'a pas répondu dans le délai imparti ({timeoutMs / 1000}s).");
+                }
+
                 string stdout = await stdoutTask;
                 string stderr = await stderrTask;
-                await Task.Run(() => process.WaitForExit(timeoutMs));
+                // The reads already completed above, so the process has necessarily exited (or is
+                // about to) - this just gives it a moment to flush ExitCode.
+                await Task.Run(() => process.WaitForExit(5000));
                 return (process.ExitCode, stdout, stderr);
             }
         }

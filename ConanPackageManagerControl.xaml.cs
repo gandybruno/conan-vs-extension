@@ -60,6 +60,13 @@ namespace conan_vs_extension
         private PackageTab _currentTab = PackageTab.Browse;
         private List<PackageSourceEntry> _sources = new List<PackageSourceEntry>();
 
+        // Whether a background fetch of the package source (remote list / local cache fallback)
+        // is currently running. Deliberately NOT the same thing as "show LoadingOverlay": the
+        // "Installé" tab only ever reads conandata.yml + the already-on-disk targets-data.json, it
+        // never needs a network round-trip, so it must never be stuck behind a spinner just
+        // because a slow/hung fetch for the "Parcourir" tab happens to still be in flight.
+        private bool _isFetchingPackageSource;
+
         // Incremented every time a new metadata fetch starts, so a slow fetch for a package the
         // user has since clicked away from can detect it's stale and avoid overwriting the panel
         // with outdated info (NuGet has the same "fetching details" race to guard against).
@@ -100,9 +107,30 @@ namespace conan_vs_extension
             this.Foreground = new SolidColorBrush(currentColor);
         }
 
+        /// <summary>
+        /// The loading overlay should only ever cover the "Parcourir" tab while a remote/cache
+        /// fetch is genuinely in flight - never the "Installé" tab, which only reads local files
+        /// (conandata.yml + the on-disk targets-data.json) and has no reason to wait on a network
+        /// call that might be slow or hung.
+        /// </summary>
+        private void UpdateLoadingOverlayVisibility()
+        {
+            LoadingOverlay.Visibility = (_isFetchingPackageSource && _currentTab == PackageTab.Browse)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
         private async Task InitializeAsync()
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            // Show the loading overlay right away, before the (possibly stale) cached package
+            // list from a previous session gets a chance to render - otherwise that old list
+            // flashes on screen for an instant before the overlay appears, which briefly looks
+            // like a fresh answer from the server. LoadPackageSourcesAsync/UpdateJsonDataAsync
+            // (or the empty-sources fallback below) are responsible for hiding it again.
+            _isFetchingPackageSource = true;
+            UpdateLoadingOverlayVisibility();
 
             await EnsureDefaultJsonFileExistsAsync();
             await LoadLibrariesFromJsonAsync();
@@ -137,8 +165,17 @@ namespace conan_vs_extension
                 string.Equals(s.DisplayName, GlobalSettings.SelectedPackageSourceName, StringComparison.OrdinalIgnoreCase));
 
             // Setting SelectedItem fires PackageSourceComboBox_SelectionChanged, which kicks off
-            // the first real fetch for whichever source ends up selected.
+            // the first real fetch for whichever source ends up selected (and hides the loading
+            // overlay once that fetch completes, one way or another).
             PackageSourceComboBox.SelectedItem = toSelect ?? _sources.FirstOrDefault();
+
+            if (_sources.Count == 0)
+            {
+                // Nothing to select -> SelectionChanged never fires -> nothing would ever hide
+                // the overlay InitializeAsync just showed.
+                _isFetchingPackageSource = false;
+                UpdateLoadingOverlayVisibility();
+            }
         }
 
         private void PackageSourceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -200,6 +237,7 @@ namespace conan_vs_extension
             ThreadHelper.ThrowIfNotOnUIThread();
             _currentTab = PackageTab.Browse;
             UpdateTabVisual();
+            UpdateLoadingOverlayVisibility(); // a fetch may still be in flight from when we left this tab
             FilterListView(LibrarySearchTextBox.Text);
         }
 
@@ -208,6 +246,9 @@ namespace conan_vs_extension
             ThreadHelper.ThrowIfNotOnUIThread();
             _currentTab = PackageTab.Installed;
             UpdateTabVisual();
+            // "Installé" only reads conandata.yml + the local targets-data.json - it never needs
+            // to wait on a "Parcourir" remote fetch, however slow or stuck that might be.
+            UpdateLoadingOverlayVisibility();
             FilterListView(LibrarySearchTextBox.Text);
         }
 
@@ -446,9 +487,9 @@ namespace conan_vs_extension
             return new Uri("about:blank");
         }
 
-        private void InstallButton_Click(object sender, RoutedEventArgs e)
+        private async void InstallButton_Click(object sender, RoutedEventArgs e)
         {
-            ThreadHelper.ThrowIfNotOnUIThread();
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
             if (!IsSupportedProject() || LibraryNameLabel.Content == null) return;
 
@@ -466,52 +507,134 @@ namespace conan_vs_extension
                 ConanFileManager.ReCreateConanData(projectDirectory);
             }
 
-            if (ConanFileManager.IsFileCommentGuarded(conandataPath))
-            {
-                ConanFileManager.WriteNewRequirement(projectDirectory, selectedLibrary + "/" + selectedVersion);
-                MessageBox.Show($"Requirement {selectedLibrary}/{selectedVersion} added to conandata.yml", "Conan C/C++ Package Manager");
-            }
-            else
+            if (!ConanFileManager.IsFileCommentGuarded(conandataPath))
             {
                 MessageBox.Show($"Requirement {selectedLibrary}/{selectedVersion} could not be added to conandata.yml because it was modified. Please, update the file manually.",
                                 "Conan C/C++ Package Manager",
                                 MessageBoxButton.OK,
                                 MessageBoxImage.Warning);
+                return;
             }
 
-            _ = ProjectConfigurationManager.SaveConanPrebuildEventsAllConfigAsync(_project);
+            ConanFileManager.WriteNewRequirement(projectDirectory, selectedLibrary + "/" + selectedVersion);
+
+            // Run `conan install` right now instead of waiting for the pre-build event to notice
+            // the change during an actual Build - that's what used to force a "build once to run
+            // conan install, then build again for real" cycle. Doing it here means the very next
+            // Build already has everything it needs.
+            InstallButton.IsEnabled = false;
+            RemoveButton.IsEnabled = false;
+            InstallOperationStatusText.Text = $"Installation de {selectedLibrary}/{selectedVersion} en cours...";
+            InstallOperationOverlay.Visibility = Visibility.Visible;
+            try
+            {
+                await ProjectConfigurationManager.SaveConanPrebuildEventsAllConfigAsync(_project);
+
+                VCConfiguration activeConfig = ProjectConfigurationManager.GetActiveVCConfiguration(_project);
+                bool installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, showErrors: true);
+
+                if (installed)
+                {
+                    MessageBox.Show($"{selectedLibrary}/{selectedVersion} installé.", "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    MessageBox.Show(
+                        $"{selectedLibrary}/{selectedVersion} a été ajouté à conandata.yml, mais 'conan install' a échoué :\n{ProjectConfigurationManager.LastConanInstallError}\n\nLe prochain Build réessaiera automatiquement.",
+                        "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            finally
+            {
+                InstallOperationOverlay.Visibility = Visibility.Collapsed;
+                InstallButton.IsEnabled = true;
+                RemoveButton.IsEnabled = true;
+            }
+
             FilterListView(LibrarySearchTextBox.Text);
             UpdateLibraryInfo(selectedLibrary);
         }
 
-        private void RemoveButton_Click(object sender, RoutedEventArgs e)
+        private async void RemoveButton_Click(object sender, RoutedEventArgs e)
         {
-            ThreadHelper.ThrowIfNotOnUIThread();
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
             if (LibraryNameLabel.Content == null) return;
 
             var selectedLibrary = LibraryNameLabel.Content.ToString();
-            var selectedVersion = VersionsComboBox.SelectedItem?.ToString();
-            if (selectedVersion == null) return;
 
             string projectDirectory = GetProjectDirectory();
+
+            // Important: don't use VersionsComboBox.SelectedItem here. That combo lists versions
+            // available on the remote (defaulting to index 0, whatever that happens to be) and is
+            // simply disabled while a package is installed - it does NOT track which version is
+            // actually installed. Using it as the version to remove meant we were building a
+            // "name/wrongVersion" string that never matched the real entry in conandata.yml, so
+            // RemoveRequirement's exact-match guard silently did nothing (no error, requirement
+            // stayed in the file). Instead, look up the actual installed requirement directly.
+            var requirements = ConanFileManager.GetConandataRequirements(projectDirectory);
+            string installedRequirement = requirements.FirstOrDefault(r => r.StartsWith(selectedLibrary + "/"));
+            if (installedRequirement == null)
+            {
+                return; // Nothing installed for this library - nothing to remove.
+            }
+
             string conandataPath = Path.Combine(projectDirectory, "conandata.yml");
 
-            if (ConanFileManager.IsFileCommentGuarded(conandataPath))
+            if (!ConanFileManager.IsFileCommentGuarded(conandataPath))
             {
-                ConanFileManager.RemoveRequirement(projectDirectory, selectedLibrary + "/" + selectedVersion);
-                MessageBox.Show($"Removing {selectedLibrary} version {selectedVersion}", "Conan C/C++ Package Manager");
-            }
-            else
-            {
-                MessageBox.Show($"Requirement {selectedLibrary}/{selectedVersion} could not be removed from conandata.yml because it was modified. Please, update the file manually.",
+                MessageBox.Show($"Requirement {installedRequirement} could not be removed from conandata.yml because it was modified. Please, update the file manually.",
                                 "Conan C/C++ Package Manager",
                                 MessageBoxButton.OK,
                                 MessageBoxImage.Warning);
+                return;
+            }
+
+            ConanFileManager.RemoveRequirement(projectDirectory, installedRequirement);
+
+            InstallButton.IsEnabled = false;
+            RemoveButton.IsEnabled = false;
+            InstallOperationStatusText.Text = $"Suppression de {installedRequirement} en cours...";
+            InstallOperationOverlay.Visibility = Visibility.Visible;
+            try
+            {
+                VCConfiguration activeConfig = ProjectConfigurationManager.GetActiveVCConfiguration(_project);
+                bool installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, showErrors: true);
+
+                if (!installed)
+                {
+                    MessageBox.Show(
+                        $"{installedRequirement} a été retiré de conandata.yml, mais 'conan install' a échoué :\n{ProjectConfigurationManager.LastConanInstallError}\n\nLe prochain Build réessaiera automatiquement.",
+                        "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            finally
+            {
+                InstallOperationOverlay.Visibility = Visibility.Collapsed;
+                InstallButton.IsEnabled = true;
+                RemoveButton.IsEnabled = true;
             }
 
             FilterListView(LibrarySearchTextBox.Text);
-            UpdateLibraryInfo(selectedLibrary);
+
+            // In the "Installé" tab, removing a package makes it disappear from the list entirely
+            // (it only ever lists installed requirements) - so there is no longer anything to show
+            // details for. Calling UpdateLibraryInfo(selectedLibrary) unconditionally here used to
+            // re-render the just-removed package's details anyway (it's still a known library in
+            // _jsonData, just no longer installed), which is what left stale info on screen. Only
+            // refresh the details panel if the library is still actually present in the (now
+            // refreshed) list - e.g. still shown as "not installed" in the "Parcourir" tab.
+            if (PackagesListBox.Items.Contains(selectedLibrary))
+            {
+                PackagesListBox.SelectedItem = selectedLibrary;
+                UpdateLibraryInfo(selectedLibrary);
+            }
+            else
+            {
+                PackagesListBox.SelectedItem = null;
+                DetailsPanel.Visibility = Visibility.Collapsed;
+                NoSelectionTextBlock.Visibility = Visibility.Visible;
+            }
         }
 
         private void ShowConfigurationDialog()
@@ -554,6 +677,9 @@ namespace conan_vs_extension
         {
             if (!(PackageSourceComboBox.SelectedItem is PackageSourceEntry source))
             {
+                _isFetchingPackageSource = false;
+                UpdateLoadingOverlayVisibility();
+
                 if (popUp)
                 {
                     MessageBox.Show(
@@ -565,21 +691,44 @@ namespace conan_vs_extension
                 return;
             }
 
-            LoadingOverlay.Visibility = Visibility.Visible;
+            _isFetchingPackageSource = true;
+            UpdateLoadingOverlayVisibility();
             try
             {
                 Dictionary<string, HashSet<string>> libraries = await FetchLibrariesFromConanRemoteAsync(source, popUp);
 
-                if (libraries == null)
+                if (libraries != null)
                 {
+                    // The remote answered - even if it has 0 matching recipes, that's a real
+                    // (reachable) result, not an offline fallback.
+                    OfflineBannerBorder.Visibility = Visibility.Collapsed;
+                    WriteLibrariesJson(libraries);
+                    await LoadLibrariesFromJsonAsync();
+
+                    if (popUp)
+                        MessageBox.Show($"Liste des packages conan mise à jour ({libraries.Count} bibliothèque(s)) depuis '{source.DisplayName}'.", "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
-                WriteLibrariesJson(libraries);
+                // Remote unreachable (network down, VPN off, server down...): don't leave the UI
+                // silently showing whatever stale targets-data.json happened to be on disk from a
+                // past session - that's exactly the "looks like server data but we're offline" bug.
+                // Fall back to what Conan's own local cache genuinely has available right now.
+                ConanOutputPane.Log($"Remote '{source.DisplayName}' injoignable, repli sur le cache local.");
+                Dictionary<string, HashSet<string>> cacheLibraries = await ConanRemoteHelper.ListLocalCachePackagesAsync();
+
+                OfflineBannerBorder.Visibility = Visibility.Visible;
+                WriteLibrariesJson(cacheLibraries ?? new Dictionary<string, HashSet<string>>());
                 await LoadLibrariesFromJsonAsync();
 
                 if (popUp)
-                    MessageBox.Show($"Liste des packages conan mise à jour ({libraries.Count} bibliothèque(s)) depuis '{source.DisplayName}'.", "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+                {
+                    int cacheCount = cacheLibraries?.Count ?? 0;
+                    MessageBox.Show(
+                        $"Le remote '{source.DisplayName}' est injoignable (hors ligne ?).\n" +
+                        $"{cacheCount} bibliothèque(s) affichée(s) depuis le cache Conan local (paquets déjà téléchargés).",
+                        "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
             }
             catch (Exception ex)
             {
@@ -588,7 +737,8 @@ namespace conan_vs_extension
             }
             finally
             {
-                LoadingOverlay.Visibility = Visibility.Collapsed;
+                _isFetchingPackageSource = false;
+                UpdateLoadingOverlayVisibility();
             }
         }
 
@@ -599,6 +749,10 @@ namespace conan_vs_extension
         /// v2 registry pattern, falls back to GitLab's own Packages REST API, since GitLab's
         /// search endpoint doesn't support a bare "*" wildcard (confirmed: q=* returns nothing,
         /// q=he* works fine) even though its own documentation says it should.
+        ///
+        /// Returns null specifically when the remote could not be reached at all (as opposed to
+        /// being reached but genuinely empty) so the caller can fall back to the local cache
+        /// instead of silently keeping stale data on screen.
         /// </summary>
         private async Task<Dictionary<string, HashSet<string>>> FetchLibrariesFromConanRemoteAsync(PackageSourceEntry source, bool popUp)
         {
@@ -615,25 +769,41 @@ namespace conan_vs_extension
 
             if (gitLabMatch.Success)
             {
-                return await FetchLibrariesFromGitLabPackagesApiAsync(
+                Dictionary<string, HashSet<string>> gitLabLibraries = await FetchLibrariesFromGitLabPackagesApiAsync(
                     gitLabMatch.Groups["base"].Value,
                     gitLabMatch.Groups["projectId"].Value,
                     source.RemoteName,
                     popUp);
+
+                // If the standard Conan protocol call above genuinely failed to reach the remote
+                // (null) AND the GitLab REST fallback also couldn't reach it (null), report
+                // "unreachable" upward. But if either one got a real (even empty) answer, that's
+                // reachable - propagate the real result.
+                if (gitLabLibraries != null)
+                {
+                    return gitLabLibraries;
+                }
+
+                return libraries; // null if the standard protocol also failed; empty dict if it succeeded with 0 matches
             }
 
-            if (popUp)
+            // No GitLab fallback applies here: `libraries` is either a genuine empty result (the
+            // standard Conan protocol reached the remote fine, 0 matches) or null (unreachable).
+            if (libraries != null && popUp)
             {
                 MessageBox.Show($"Aucun package trouvé sur le remote '{source.RemoteName}'.", "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
-            return libraries ?? new Dictionary<string, HashSet<string>>();
+            return libraries;
         }
 
         /// <summary>
         /// GitLab's Packages REST API, keyed to one specific Conan remote's name so each
         /// GitLab-backed remote can have its own access token (see
-        /// GlobalSettings.GetGitLabTokenForRemote/SetGitLabTokenForRemote).
+        /// GlobalSettings.GetGitLabTokenForRemote/SetGitLabTokenForRemote). Returns null (rather
+        /// than letting the exception propagate) on any network failure, so the caller can tell
+        /// "remote unreachable" apart from "reachable, 0 packages" and fall back to the local
+        /// cache instead of crashing the refresh or showing stale data.
         /// </summary>
         private async Task<Dictionary<string, HashSet<string>>> FetchLibrariesFromGitLabPackagesApiAsync(string baseUrl, string projectId, string remoteName, bool popUp)
         {
@@ -651,39 +821,53 @@ namespace conan_vs_extension
                 }
             }
 
-            using (var httpClient = new HttpClient())
+            try
             {
-                if (!string.IsNullOrWhiteSpace(token))
+                using (var httpClient = new HttpClient())
                 {
-                    httpClient.DefaultRequestHeaders.Add("PRIVATE-TOKEN", token);
-                }
+                    httpClient.Timeout = TimeSpan.FromSeconds(15);
 
-                var recipeRefs = new List<string>();
-                const int perPage = 100;
-                int page = 1;
-
-                while (true)
-                {
-                    string pageUrl = $"{baseUrl}/api/v4/projects/{projectId}/packages?package_type=conan&per_page={perPage}&page={page}";
-                    string jsonContent = await httpClient.GetStringAsync(pageUrl);
-
-                    JArray pkgArray = JArray.Parse(jsonContent);
-                    if (pkgArray.Count == 0)
+                    if (!string.IsNullOrWhiteSpace(token))
                     {
-                        break;
+                        httpClient.DefaultRequestHeaders.Add("PRIVATE-TOKEN", token);
                     }
 
-                    recipeRefs.AddRange(pkgArray.Select(item => item["name"]?.ToString()).Where(name => name != null));
+                    var recipeRefs = new List<string>();
+                    const int perPage = 100;
+                    int page = 1;
 
-                    if (pkgArray.Count < perPage)
+                    while (true)
                     {
-                        break;
+                        string pageUrl = $"{baseUrl}/api/v4/projects/{projectId}/packages?package_type=conan&per_page={perPage}&page={page}";
+                        string jsonContent = await httpClient.GetStringAsync(pageUrl);
+
+                        JArray pkgArray = JArray.Parse(jsonContent);
+                        if (pkgArray.Count == 0)
+                        {
+                            break;
+                        }
+
+                        recipeRefs.AddRange(pkgArray.Select(item => item["name"]?.ToString()).Where(name => name != null));
+
+                        if (pkgArray.Count < perPage)
+                        {
+                            break;
+                        }
+
+                        page++;
                     }
 
-                    page++;
+                    return ParseRecipeReferences(recipeRefs, @"^([\w\-.]+)\/([\w\d.\-]+(?:@[\w\-.]+\/[\w\-.]+)?)$");
                 }
-
-                return ParseRecipeReferences(recipeRefs, @"^([\w\-.]+)\/([\w\d.\-]+(?:@[\w\-.]+\/[\w\-.]+)?)$");
+            }
+            catch (Exception ex)
+            {
+                // Network unreachable, DNS failure, timeout, etc. - this is exactly the "no
+                // internet" case the user reported; treat it the same as the standard Conan
+                // protocol failing (null), rather than letting the whole refresh throw.
+                System.Diagnostics.Debug.WriteLine($"[ConanPackageManagerControl] GitLab Packages API unreachable for '{remoteName}': {ex}");
+                ConanOutputPane.Log($"GitLab Packages API ({remoteName}) injoignable : {ex.Message}");
+                return null;
             }
         }
 
@@ -738,6 +922,17 @@ namespace conan_vs_extension
         private void Update_Click(object sender, RoutedEventArgs e)
         {
             _ = UpdateJsonDataAsync(true);
+        }
+
+        /// <summary>
+        /// "Logs" button - shows the "Conan" Output window pane, where every conan command the
+        /// plugin runs (install, list, remote management, recipe metadata lookups) is logged with
+        /// its result. Answers "où je peux voir ce que fait le plugin ?".
+        /// </summary>
+        private void ShowLogsButton_Click(object sender, RoutedEventArgs e)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            ConanOutputPane.Show();
         }
     }
 }
