@@ -141,7 +141,12 @@ namespace conan_vs_extension
             string projectDirectory = Path.GetDirectoryName(project.FullName);
             string conanScriptDirectory = Path.Combine(projectDirectory, ".conan");
             string scriptPath = Path.Combine(conanScriptDirectory, conan_script_name);
-            string conanPath = GlobalSettings.ConanExecutablePath;
+            // GetResolvedConanExecutablePath (not the raw ConanExecutablePath) is required here:
+            // this path gets baked as a literal string into the generated conan_install.bat below
+            // ("{conanPath}" install ...), and an empty FileName there (the "Use System Conan"
+            // case, where ConanExecutablePath is unset) would produce a broken `"" install ...`
+            // line instead of letting the OS resolve `conan` from PATH.
+            string conanPath = GlobalSettings.GetResolvedConanExecutablePath();
 
             string conanCommandContents = $@"@echo off
 setlocal enabledelayedexpansion
@@ -357,9 +362,7 @@ echo No changes detected, skipping conan install...
          */
         private static async Task<(bool success, string error)> RunConanInstallProcessAsync(string projectDirectory, string profileName)
         {
-            string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
-                ? "conan"
-                : GlobalSettings.ConanExecutablePath;
+            string conanPath = GlobalSettings.GetResolvedConanExecutablePath();
 
             string arguments = $"install . -pr:h=.conan/{profileName} -pr:b=default --build=missing";
 

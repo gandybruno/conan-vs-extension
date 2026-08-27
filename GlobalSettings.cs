@@ -64,6 +64,25 @@ namespace conan_vs_extension{
         }
 
         /**
+         * The actual path/command to invoke for every `conan` process this extension starts.
+         * Centralizes the "ConanExecutablePath, or the bare command 'conan' if unset" fallback
+         * that used to be repeated (inconsistently - see below) at every call site in
+         * ConanRemoteHelper and ProjectConfigurationManager.
+         *
+         * Falling back to "conan" (rather than an empty string) matters: an empty ProcessStartInfo
+         * FileName - or an empty path baked into the generated conan_install.bat - fails outright,
+         * whereas "conan" lets the OS resolve it from the system PATH, which is exactly what
+         * "Use System Conan" in ConanOptionsPage is meant to do (it stores ConanExecutablePath as
+         * the literal string "conan").
+         *
+         * @return ConanExecutablePath if one is configured, otherwise the bare command "conan".
+         */
+        public static string GetResolvedConanExecutablePath()
+        {
+            return string.IsNullOrWhiteSpace(ConanExecutablePath) ? "conan" : ConanExecutablePath;
+        }
+
+        /**
          * Which registry the LEGACY single-source package browser should fetch its package list
          * from. See PackageRegistrySource.
          */

@@ -59,9 +59,7 @@ namespace conan_vs_extension
         {
             var remotes = new List<ConanRemote>();
 
-            string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
-                ? "conan"
-                : GlobalSettings.ConanExecutablePath;
+            string conanPath = GlobalSettings.GetResolvedConanExecutablePath();
 
             var psi = new ProcessStartInfo
             {
@@ -169,9 +167,7 @@ namespace conan_vs_extension
          */
         private static async Task<Dictionary<string, HashSet<string>>> RunConanListAsync(string arguments)
         {
-            string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
-                ? "conan"
-                : GlobalSettings.ConanExecutablePath;
+            string conanPath = GlobalSettings.GetResolvedConanExecutablePath();
 
             ConanOutputPane.Log($"conan {arguments}");
 
@@ -284,9 +280,7 @@ namespace conan_vs_extension
         {
             var users = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
-                ? "conan"
-                : GlobalSettings.ConanExecutablePath;
+            string conanPath = GlobalSettings.GetResolvedConanExecutablePath();
 
             ConanOutputPane.Log("conan remote list-users");
 
@@ -339,9 +333,7 @@ namespace conan_vs_extension
          */
         public static async Task<(bool success, string error)> LoginRemoteAsync(string name, string username, string password)
         {
-            string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
-                ? "conan"
-                : GlobalSettings.ConanExecutablePath;
+            string conanPath = GlobalSettings.GetResolvedConanExecutablePath();
 
             string arguments = $"remote login \"{name}\" \"{username}\"";
             ConanOutputPane.Log($"conan {arguments}");
@@ -408,9 +400,7 @@ namespace conan_vs_extension
 
         private static async Task<(bool success, string error)> RunConanRemoteCommandAsync(string arguments)
         {
-            string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
-                ? "conan"
-                : GlobalSettings.ConanExecutablePath;
+            string conanPath = GlobalSettings.GetResolvedConanExecutablePath();
 
             ConanOutputPane.Log($"conan {arguments}");
 
@@ -465,9 +455,7 @@ namespace conan_vs_extension
             }
 
             string reference = $"{libName}/{version}";
-            string conanPath = string.IsNullOrWhiteSpace(GlobalSettings.ConanExecutablePath)
-                ? "conan"
-                : GlobalSettings.ConanExecutablePath;
+            string conanPath = GlobalSettings.GetResolvedConanExecutablePath();
 
             try
             {
