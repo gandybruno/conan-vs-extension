@@ -924,15 +924,5 @@ namespace conan_vs_extension
             _ = UpdateJsonDataAsync(true);
         }
 
-        /// <summary>
-        /// "Logs" button - shows the "Conan" Output window pane, where every conan command the
-        /// plugin runs (install, list, remote management, recipe metadata lookups) is logged with
-        /// its result. Answers "où je peux voir ce que fait le plugin ?".
-        /// </summary>
-        private void ShowLogsButton_Click(object sender, RoutedEventArgs e)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            ConanOutputPane.Show();
-        }
     }
 }
