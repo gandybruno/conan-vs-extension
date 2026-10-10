@@ -12,6 +12,8 @@ available libraries, install, and use them without leaving Visual Studio.
 
 ## What's new in 2.1.0
 
+> The full history is in [CHANGELOG.md](CHANGELOG.md).
+
 This release is a large pass of bug fixes and quality-of-life improvements on top of the
 NuGet-style Package Manager introduced previously:
 
@@ -73,14 +75,12 @@ scoped to that one project.
 
 #### Initial Configuration
 
-![Initial configuration](https://raw.githubusercontent.com/conan-io/conan-vs-extension/develop2/.github/readme/tool-window-extension.png)
-
 Before the package manager can do anything, configure the Conan executable it should use:
 open **Tools > Options > Conan Package Manager > General** and either point it at a
 specific `conan.exe`, or check "Use System Conan" to use whatever is on your system PATH.
 Clicking the ⚙️ (gear) icon in the package manager window opens the same page directly.
 
-![Select Conan executable](https://raw.githubusercontent.com/conan-io/conan-vs-extension/develop2/.github/readme/select-conan-executable.png)
+![Select Conan executable](.github/readme/select-conan-executable.png)
 
 #### Searching and Adding Libraries
 
