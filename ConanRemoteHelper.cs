@@ -328,8 +328,9 @@ namespace conan_vs_extension
         /**
          * Authenticates on a remote (`conan remote login`), same effect as running it in a
          * terminal. The password is never passed as a command-line argument (which would make it
-         * visible to anything that can see the process list) - it's piped through the child
-         * process's standard input instead, exactly like typing it at the interactive prompt.
+         * visible to anything that can see the process list) - it is handed to the child process
+         * through the CONAN_PASSWORD environment variable instead (conan reads its interactive prompt from
+         * the console, not from stdin, so piping the password made the command hang).
          */
         public static async Task<(bool success, string error)> LoginRemoteAsync(string name, string username, string password)
         {
@@ -349,23 +350,25 @@ namespace conan_vs_extension
                 CreateNoWindow = true
             };
 
+            psi.EnvironmentVariables["CONAN_LOGIN_USERNAME"] = username ?? string.Empty;
+            psi.EnvironmentVariables["CONAN_PASSWORD"] = password ?? string.Empty;
+
             try
             {
                 using (var process = Process.Start(psi))
                 {
-                    await process.StandardInput.WriteLineAsync(password ?? string.Empty);
                     process.StandardInput.Close();
 
                     Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
                     Task<string> stderrTask = process.StandardError.ReadToEndAsync();
                     Task readsTask = Task.WhenAll(stdoutTask, stderrTask);
 
-                    Task completed = await Task.WhenAny(readsTask, Task.Delay(20000));
+                    Task completed = await Task.WhenAny(readsTask, Task.Delay(60000));
                     if (completed != readsTask)
                     {
                         try { process.Kill(); } catch { /* already exited on its own */ }
-                        ConanOutputPane.Log("  -> délai dépassé (20s), processus arrêté.");
-                        return (false, "conan n'a pas répondu dans le délai imparti (20s).");
+                        ConanOutputPane.Log("  -> délai dépassé (60s), processus arrêté.");
+                        return (false, "conan n'a pas répondu dans le délai imparti (60s).");
                     }
 
                     string stdout = await stdoutTask;

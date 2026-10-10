@@ -48,7 +48,7 @@ NuGet-style Package Manager introduced previously:
 - **Package Sources page can manage authentication.** Tools > Options > Conan Package
   Manager > Package Sources can now log in/out of a remote (`conan remote login`/`logout`)
   directly, showing which user (if any) is currently authenticated on each one. The
-  password is sent to `conan` through its standard input, never as a command-line
+  password is sent to `conan` through the environment of the `conan` process, never as a command-line
   argument.
 - Restyled icons (Actualiser/Configurer) to sit flush with the toolbar, matching NuGet's
   own flat look.
@@ -110,7 +110,7 @@ gives you a NuGet-style grid to add, remove, enable/disable, or edit a remote's 
 equivalent to running `conan remote add/remove/enable/disable/update` yourself.
 
 That same page can also authenticate you on a remote: select it and click **Se
-connecter...** to run `conan remote login` (your password is piped to `conan` directly,
+connecter...** to run `conan remote login` (your password is handed to `conan` through its environment,
 never passed as a command-line argument), or **Se déconnecter** to log out
 (`conan remote logout`). The **Utilisateur** column shows who, if anyone, is currently
 authenticated on each remote.

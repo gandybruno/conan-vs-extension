@@ -17,7 +17,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Package Sources options page** (Tools > Options > Conan Package Manager > Package
   Sources): add, remove, enable/disable and edit Conan remotes, NuGet-style.
 - **Remote authentication.** Log in/out of a remote (`conan remote login`/`logout`) from the
-  Package Sources page; the password is sent to `conan` through standard input, never as a
+  Package Sources page; the password is sent to `conan` through its environment, never as a
   command-line argument. The authenticated user is shown for each remote.
 - **Multi-remote support.** The package list now comes from the remotes already configured
   in Conan (`conan remote list`), selectable from a **Source** dropdown.

@@ -123,7 +123,7 @@ namespace conan_vs_extension
          * The "Se connecter..."/"Se déconnecter" button: if the selected remote already has a
          * logged-in user, confirms and runs `conan remote logout`; otherwise prompts for
          * credentials (CredentialsDialog) and runs `conan remote login` (the
-         * password is piped through the child process's stdin, never passed as a command-line
+         * password is handed to the child process through its environment, never passed as a command-line
          * argument - see ConanRemoteHelper.LoginRemoteAsync).
          */
         private void LoginButton_Click(object sender, RoutedEventArgs e)
