@@ -75,9 +75,10 @@ scoped to that one project.
 
 #### Initial Configuration
 
-Before the package manager can do anything, configure the Conan executable it should use:
-open **Tools > Options > Conan Package Manager > General** and either point it at a
-specific `conan.exe`, or check "Use System Conan" to use whatever is on your system PATH.
+There is nothing to configure if `conan` is on your system PATH: **Use System Conan** is
+checked by default and **conancenter** is selected as the package source. If Conan cannot
+be found the window is locked with a message; open **Tools > Options > Conan Package
+Manager > General**, uncheck "Use System Conan" and point it at a specific `conan.exe`.
 Clicking the ⚙️ (gear) icon in the package manager window opens the same page directly.
 
 ![Select Conan executable](.github/readme/select-conan-executable.png)
@@ -114,12 +115,31 @@ never passed as a command-line argument), or **Se déconnecter** to log out
 (`conan remote logout`). The **Utilisateur** column shows who, if anyone, is currently
 authenticated on each remote.
 
+**Adding a remote:** click **Ajouter un remote...** and fill in the dialog.
+
+- *Remote Conan (URL)*: a name and the URL of any Conan remote (Artifactory, a Conan
+  server, ...).
+- *GitLab Package Registry*: a name, the GitLab server (default `https://gitlab.com`) and
+  the project's numeric ID (Settings > General) or its path (`group/project`). The dialog
+  builds the Conan URL `<server>/api/v4/projects/<id>/packages/conan` for you. For a private
+  project also give your username and an access token (Personal, Project or Deploy token)
+  with the `read_api` and `read_package_registry` scopes; the extension logs you in on the
+  remote (`conan remote login`) and keeps the token for the package listing. Leave both empty
+  for a public project.
+
+The same remote from a terminal:
+
+```
+conan remote add my-gitlab https://gitlab.com/api/v4/projects/<project-id>/packages/conan
+conan remote login my-gitlab <username> -p <token>
+```
+
 For a remote pointing at a GitLab Package Registry project, the extension additionally
 queries GitLab's own [packages
 API](https://docs.gitlab.com/ee/api/packages.html#for-a-project) as a fallback, since
 GitLab's Conan v2 endpoint does not support a bare wildcard search. If that project is
-private, you'll be prompted once for a Personal/Project Access Token with `read_api`
-scope, remembered per remote afterwards.
+private, you'll be prompted once for the token (`read_api` scope) if it was not given when
+adding the remote; it is remembered per remote afterwards.
 
 #### Working offline
 

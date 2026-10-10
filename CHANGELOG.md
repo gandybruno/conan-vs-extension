@@ -23,6 +23,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   in Conan (`conan remote list`), selectable from a **Source** dropdown.
 - **GitLab Package Registry** support, including a fallback on GitLab's packages API and a
   per-remote access token for private projects.
+- **"Add a remote" dialog** with a GitLab mode (server + project ID/path, optional user and
+  token) that builds the Conan URL and logs in for you.
 - **On-demand recipe metadata** (description, license, homepage, author, topics) with cache
   cleanup; fetch failures are reported in the UI and the Output window.
 - **Conan Output pane.** Every `conan` command run by the extension is logged to a
@@ -55,6 +57,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   from `conandata.yml` instead of the version picker.
 - Both tabs could get stuck loading forever when a remote was slow or hung.
 - The details panel is now cleared after a package is removed.
+- The fields to add a remote on the Package Sources page could not be typed into (keyboard
+  input is not delivered to WPF text boxes nested in the Options dialog); remotes are now
+  added through a dialog.
 - The remote selection was not remembered, and the window was empty when re-opened.
 
 ### Removed

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -180,7 +181,7 @@ namespace conan_vs_extension
         }
 
         /**
-         * The "Ajouter" button: runs `conan remote add` with the name/URL/SSL fields below the grid, then clears them and refreshes the grid.
+         * The "Ajouter un remote..." button: prompts for the remote (AddRemoteDialog), runs `conan remote add` and, for GitLab, stores the token and logs in.
          */
         private void AddButton_Click(object sender, RoutedEventArgs e)
         {
@@ -189,30 +190,39 @@ namespace conan_vs_extension
 
         private async Task AddButtonClickAsync(object sender, RoutedEventArgs e)
         {
-            string name = NewNameTextBox.Text?.Trim();
-            string url = NewSourceTextBox.Text?.Trim();
-
-            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(url))
+            NewRemoteInfo info = AddRemoteDialog.Show();
+            if (info == null)
             {
-                MessageBox.Show("Le nom et la source (URL) sont obligatoires.", "Conan C/C++ Package Manager",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            (bool success, string error) = await ConanRemoteHelper.AddRemoteAsync(name, url, VerifySslCheckBox.IsChecked == true);
+            (bool success, string error) = await ConanRemoteHelper.AddRemoteAsync(info.Name, info.Url, info.VerifySsl);
 
             if (!success)
             {
-                MessageBox.Show($"Impossible d'ajouter le remote '{name}' :\n{error}", "Conan C/C++ Package Manager",
+                MessageBox.Show($"Impossible d'ajouter le remote '{info.Name}' :\n{error}", "Conan C/C++ Package Manager",
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            NewNameTextBox.Text = string.Empty;
-            NewSourceTextBox.Text = string.Empty;
+            if (info.IsGitLab && !string.IsNullOrEmpty(info.Token))
+            {
+                // The same token serves the GitLab Packages API (listing) and the Conan login (download/upload).
+                GlobalSettings.SetGitLabTokenForRemote(info.Name, info.Token);
+
+                if (!string.IsNullOrEmpty(info.Username))
+                {
+                    (bool loginSuccess, string loginError) = await ConanRemoteHelper.LoginRemoteAsync(info.Name, info.Username, info.Token);
+                    if (!loginSuccess)
+                    {
+                        MessageBox.Show($"Le remote '{info.Name}' a Ã©tÃ© ajoutÃ© mais l'authentification a Ã©chouÃ© :\n{loginError}",
+                            "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                }
+            }
+
             await RefreshRemotesAsync();
         }
-
         /**
          * The "Modifier la source..." button: prompts for a new URL (SSL verification unchanged) and runs `conan remote update`.
          */
@@ -317,6 +327,161 @@ namespace conan_vs_extension
         }
     }
 
+    /**
+     * Result of AddRemoteDialog: a plain Conan remote (Name + Url) or a GitLab Package Registry
+     * (Url already built from the server and project, plus the optional Username/Token).
+     */
+    internal sealed class NewRemoteInfo
+    {
+        public string Name { get; set; }
+        public string Url { get; set; }
+        public bool VerifySsl { get; set; }
+        public bool IsGitLab { get; set; }
+        public string Username { get; set; }
+        public string Token { get; set; }
+    }
+
+    /**
+     * Modal WinForms prompt used to add a remote. It is a real dialog rather than inline text
+     * boxes because WPF text boxes hosted in the Tools > Options page (ElementHost nested in the
+     * shell's own WPF dialog) do not receive keyboard input.
+     * Two kinds of remote are offered: any Conan URL, or a GitLab project whose Conan v2 URL
+     * (`<server>/api/v4/projects/<id>/packages/conan`) is built from the server and project ID/path.
+     */
+    internal static class AddRemoteDialog
+    {
+        public static NewRemoteInfo Show()
+        {
+            var form = new System.Windows.Forms.Form
+            {
+                Text = "Ajouter un remote Conan",
+                StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen,
+                FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false,
+                ShowInTaskbar = false
+            };
+
+            var typeLabel = new System.Windows.Forms.Label { Text = "Type :", Left = 12, Top = 15, AutoSize = true };
+            var typeCombo = new System.Windows.Forms.ComboBox { Left = 130, Top = 12, Width = 330, DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList };
+            typeCombo.Items.Add("Remote Conan (URL)");
+            typeCombo.Items.Add("GitLab Package Registry");
+            typeCombo.SelectedIndex = 0;
+
+            var nameLabel = new System.Windows.Forms.Label { Text = "Nom :", Left = 12, Top = 48, AutoSize = true };
+            var nameBox = new System.Windows.Forms.TextBox { Left = 130, Top = 45, Width = 330 };
+
+            var urlLabel = new System.Windows.Forms.Label { Text = "Source (URL) :", Left = 12, Top = 81, AutoSize = true };
+            var urlBox = new System.Windows.Forms.TextBox { Left = 130, Top = 78, Width = 330 };
+
+            var projectLabel = new System.Windows.Forms.Label { Text = "ID ou chemin du projet :", Left = 12, Top = 114, AutoSize = true };
+            var projectBox = new System.Windows.Forms.TextBox { Left = 130, Top = 111, Width = 330 };
+
+            var userLabel = new System.Windows.Forms.Label { Text = "Utilisateur :", Left = 12, Top = 147, AutoSize = true };
+            var userBox = new System.Windows.Forms.TextBox { Left = 130, Top = 144, Width = 330 };
+
+            var tokenLabel = new System.Windows.Forms.Label { Text = "Token d'accÃ¨s :", Left = 12, Top = 180, AutoSize = true };
+            var tokenBox = new System.Windows.Forms.TextBox { Left = 130, Top = 177, Width = 330, UseSystemPasswordChar = true };
+
+            var hintLabel = new System.Windows.Forms.Label
+            {
+                Left = 12,
+                Top = 210,
+                Width = 448,
+                Height = 46,
+                ForeColor = System.Drawing.SystemColors.GrayText,
+                Text = "Token GitLab (personnel, de projet ou de dÃ©ploiement) avec les scopes read_api et read_package_registry. " +
+                       "Laissez l'utilisateur et le token vides pour un projet public."
+            };
+
+            var sslBox = new System.Windows.Forms.CheckBox { Text = "VÃ©rifier SSL", Left = 130, Checked = true, AutoSize = true };
+            var okButton = new System.Windows.Forms.Button { Text = "Ajouter", Width = 90, DialogResult = System.Windows.Forms.DialogResult.OK };
+            var cancelButton = new System.Windows.Forms.Button { Text = "Annuler", Width = 90, DialogResult = System.Windows.Forms.DialogResult.Cancel };
+
+            void UpdateLayout()
+            {
+                bool gitlab = typeCombo.SelectedIndex == 1;
+
+                urlLabel.Text = gitlab ? "Serveur GitLab :" : "Source (URL) :";
+                if (gitlab && string.IsNullOrWhiteSpace(urlBox.Text))
+                {
+                    urlBox.Text = "https://gitlab.com";
+                }
+                else if (!gitlab && urlBox.Text == "https://gitlab.com")
+                {
+                    urlBox.Text = string.Empty;
+                }
+
+                foreach (System.Windows.Forms.Control c in new System.Windows.Forms.Control[] { projectLabel, projectBox, userLabel, userBox, tokenLabel, tokenBox, hintLabel })
+                {
+                    c.Visible = gitlab;
+                }
+
+                int bottom = gitlab ? 262 : 118;
+                sslBox.Top = bottom + 4;
+                okButton.Top = bottom;
+                okButton.Left = 275;
+                cancelButton.Top = bottom;
+                cancelButton.Left = 370;
+                form.ClientSize = new System.Drawing.Size(472, bottom + 42);
+            }
+
+            typeCombo.SelectedIndexChanged += (s, e) => UpdateLayout();
+
+            form.Controls.AddRange(new System.Windows.Forms.Control[]
+            {
+                typeLabel, typeCombo, nameLabel, nameBox, urlLabel, urlBox, projectLabel, projectBox,
+                userLabel, userBox, tokenLabel, tokenBox, hintLabel, sslBox, okButton, cancelButton
+            });
+            form.AcceptButton = okButton;
+            form.CancelButton = cancelButton;
+            UpdateLayout();
+
+            form.FormClosing += (s, e) =>
+            {
+                if (form.DialogResult != System.Windows.Forms.DialogResult.OK)
+                {
+                    return;
+                }
+
+                bool gitlab = typeCombo.SelectedIndex == 1;
+                bool missing = string.IsNullOrWhiteSpace(nameBox.Text) || string.IsNullOrWhiteSpace(urlBox.Text)
+                               || (gitlab && string.IsNullOrWhiteSpace(projectBox.Text));
+                if (missing)
+                {
+                    System.Windows.Forms.MessageBox.Show(
+                        gitlab ? "Le nom, le serveur et le projet GitLab sont obligatoires." : "Le nom et la source (URL) sont obligatoires.",
+                        "Conan C/C++ Package Manager", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Warning);
+                    e.Cancel = true;
+                }
+            };
+
+            if (form.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+            {
+                return null;
+            }
+
+            bool isGitLab = typeCombo.SelectedIndex == 1;
+            string url = urlBox.Text.Trim();
+
+            if (isGitLab)
+            {
+                string project = projectBox.Text.Trim().Trim('/');
+                bool numeric = project.Length > 0 && project.All(char.IsDigit);
+                url = $"{url.TrimEnd('/')}/api/v4/projects/{(numeric ? project : Uri.EscapeDataString(project))}/packages/conan";
+            }
+
+            return new NewRemoteInfo
+            {
+                Name = nameBox.Text.Trim(),
+                Url = url,
+                VerifySsl = sslBox.Checked,
+                IsGitLab = isGitLab,
+                Username = isGitLab ? userBox.Text.Trim() : null,
+                Token = isGitLab ? tokenBox.Text.Trim() : null
+            };
+        }
+    }
     /**
      * Small WinForms prompt (username + masked password) for `conan remote login`, in the same
      * spirit as MessageBoxWithInput (ConanSharedModels.cs) but with a

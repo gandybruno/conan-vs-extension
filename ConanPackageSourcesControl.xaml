@@ -1,4 +1,4 @@
-<UserControl x:Class="conan_vs_extension.ConanPackageSourcesControl"
+﻿<UserControl x:Class="conan_vs_extension.ConanPackageSourcesControl"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -59,9 +59,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+            </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,10" Opacity="0.8"
                    Text="Remotes Conan configurés sur cette machine (identique à 'conan remote list'). Ajouter/supprimer/modifier/activer un remote ici revient à exécuter 'conan remote add/remove/update/enable/disable' - la liste des sources du gestionnaire de packages Conan (Parcourir) en dépend directement."/>
@@ -109,7 +107,9 @@
             </DataGrid.Columns>
         </DataGrid>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,14">
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button x:Name="AddButton" Content="Ajouter un remote..." Click="AddButton_Click"
+                    Padding="12,4" Margin="0,0,16,0" Style="{StaticResource ThemedButtonStyle}"/>
             <Button x:Name="LoginButton" Content="Se connecter..." IsEnabled="False" Click="LoginButton_Click"
                     Padding="12,4" Margin="0,0,8,0" Style="{StaticResource ThemedButtonStyle}"/>
             <Button x:Name="EnableDisableButton" Content="Désactiver" IsEnabled="False" Click="EnableDisableButton_Click"
@@ -118,34 +118,6 @@
                     Padding="12,4" Margin="0,0,8,0" Style="{StaticResource ThemedButtonStyle}"/>
             <Button x:Name="RemoveButton" Content="Supprimer" IsEnabled="False" Click="RemoveButton_Click"
                     Padding="12,4" Style="{StaticResource ThemedButtonStyle}"/>
-        </StackPanel>
-
-        <Separator Grid.Row="3" Margin="0,0,0,10"/>
-
-        <StackPanel Grid.Row="4">
-            <TextBlock Text="Ajouter un nouveau remote" FontWeight="SemiBold" Margin="0,0,0,8"/>
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Nom :" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                <TextBox x:Name="NewNameTextBox" Grid.Row="0" Grid.Column="1" Height="26" Margin="0,0,0,6"
-                         Style="{StaticResource ThemedTextBoxStyle}"/>
-
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Source :" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                <TextBox x:Name="NewSourceTextBox" Grid.Row="1" Grid.Column="1" Height="26"
-                         Style="{StaticResource ThemedTextBoxStyle}"/>
-            </Grid>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                <CheckBox x:Name="VerifySslCheckBox" Content="Vérifier SSL" IsChecked="True" VerticalAlignment="Center" Margin="0,0,14,0"/>
-                <Button x:Name="AddButton" Content="Ajouter" Click="AddButton_Click" Padding="16,4" Style="{StaticResource ThemedButtonStyle}"/>
-            </StackPanel>
         </StackPanel>
     </Grid>
 </UserControl>
