@@ -104,6 +104,16 @@ namespace conan_vs_extension
             // for it via AddHandler even without a dedicated CLR event to wire up in XAML.
             LibrarySearchComboBox.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler(SearchTextBox_TextChanged));
 
+            // Remotes are added/removed from Tools > Options (a separate, modal page): when the
+            // keyboard focus comes back to this window, reload the Source dropdown if they changed.
+            IsKeyboardFocusWithinChanged += (s, e) =>
+            {
+                if ((bool)e.NewValue)
+                {
+                    _ = ThreadHelper.JoinableTaskFactory.RunAsync(RefreshSourcesIfChangedAsync);
+                }
+            };
+
             UpdateTabVisual();
             ToggleUIEnableState(IsConanInitialized());
             _ = InitializeAsync();
@@ -206,6 +216,41 @@ namespace conan_vs_extension
             }
         }
 
+        private bool _isCheckingSources;
+
+        /**
+         * Re-reads `conan remote list` and, only if the remotes differ from the ones shown in the
+         * Source dropdown (added, removed, renamed or re-pointed from the Package Sources page),
+         * reloads the dropdown - keeping the currently selected source when it still exists.
+         */
+        private async Task RefreshSourcesIfChangedAsync()
+        {
+            if (_isCheckingSources || _isFetchingPackageSource || !IsConanInitialized())
+            {
+                return;
+            }
+
+            _isCheckingSources = true;
+            try
+            {
+                List<ConanRemoteHelper.ConanRemote> remotes = await ConanRemoteHelper.ListRemotesAsync();
+
+                bool changed = remotes.Count != _sources.Count;
+                for (int i = 0; !changed && i < remotes.Count; i++)
+                {
+                    changed = remotes[i].Name != _sources[i].RemoteName || remotes[i].Url != _sources[i].RemoteUrl;
+                }
+
+                if (changed)
+                {
+                    await LoadPackageSourcesAsync();
+                }
+            }
+            finally
+            {
+                _isCheckingSources = false;
+            }
+        }
         /**
          * Persists the newly-selected package source and re-fetches its package list (without the "found nothing"/error popups Update_Click shows, since this can also fire from code during initial load).
          */
@@ -863,6 +908,7 @@ namespace conan_vs_extension
             ThreadHelper.ThrowIfNotOnUIThread();
             ShowConfigurationDialog();
             ToggleUIEnableState(IsConanInitialized());
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(RefreshSourcesIfChangedAsync);
         }
 
         // ---- Package source fetching: entirely driven by Conan's own remotes (`conan remote

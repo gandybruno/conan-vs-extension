@@ -57,6 +57,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   from `conandata.yml` instead of the version picker.
 - Both tabs could get stuck loading forever when a remote was slow or hung.
 - The details panel is now cleared after a package is removed.
+- A remote added (or removed) from the Options page was missing from the **Source** dropdown
+  until the window was closed and re-opened; the list now refreshes when the window regains focus.
 - The fields to add a remote on the Package Sources page could not be typed into (keyboard
   input is not delivered to WPF text boxes nested in the Options dialog); remotes are now
   added through a dialog.
