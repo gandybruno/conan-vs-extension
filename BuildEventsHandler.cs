@@ -117,14 +117,14 @@ namespace conan_vs_extension
         private void OnSolutionOpened()
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            ConanInstallTracker.Track("__solution__", InstallConanPackagesForAllProjectsAsync);
+            _ = ConanInstallTracker.Track("__solution__", InstallConanPackagesForAllProjectsAsync);
         }
 
         private void OnProjectAdded(Project project)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             if (project == null) return;
-            ConanInstallTracker.Track(project.FullName, () => InstallConanPackagesForProjectAsync(project));
+            _ = ConanInstallTracker.Track(project.FullName, () => InstallConanPackagesForProjectAsync(project));
         }
 
         private async Task InstallConanPackagesForAllProjectsAsync()
@@ -191,7 +191,7 @@ namespace conan_vs_extension
                         (uint)VSConstants.VSITEMID.Root, (int)__VSHPROPID.VSHPROPID_ExtObject, out object extObject)) &&
                     extObject is Project project)
                 {
-                    ConanInstallTracker.Track(project.FullName, () => InstallConanPackagesForProjectAsync(project));
+                    _ = ConanInstallTracker.Track(project.FullName, () => InstallConanPackagesForProjectAsync(project));
                 }
             }
             catch (Exception ex)
@@ -231,7 +231,7 @@ namespace conan_vs_extension
             pfCancelUpdate = 1;
             ConanOutputPane.Log("Compilation reportée : une installation/mise à jour Conan est encore en cours. La compilation redémarrera automatiquement une fois celle-ci terminée.");
 
-            ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
             {
                 try
                 {

@@ -125,7 +125,12 @@ namespace conan_vs_extension
          * password is piped through the child process's stdin, never passed as a command-line
          * argument - see ConanRemoteHelper.LoginRemoteAsync).
          */
-        private async void LoginButton_Click(object sender, RoutedEventArgs e)
+        private void LoginButton_Click(object sender, RoutedEventArgs e)
+        {
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(() => LoginButtonClickAsync(sender, e));
+        }
+
+        private async Task LoginButtonClickAsync(object sender, RoutedEventArgs e)
         {
             if (_selected == null)
             {
@@ -177,7 +182,12 @@ namespace conan_vs_extension
         /**
          * The "Ajouter" button: runs `conan remote add` with the name/URL/SSL fields below the grid, then clears them and refreshes the grid.
          */
-        private async void AddButton_Click(object sender, RoutedEventArgs e)
+        private void AddButton_Click(object sender, RoutedEventArgs e)
+        {
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(() => AddButtonClickAsync(sender, e));
+        }
+
+        private async Task AddButtonClickAsync(object sender, RoutedEventArgs e)
         {
             string name = NewNameTextBox.Text?.Trim();
             string url = NewSourceTextBox.Text?.Trim();
@@ -206,7 +216,12 @@ namespace conan_vs_extension
         /**
          * The "Modifier la source..." button: prompts for a new URL (SSL verification unchanged) and runs `conan remote update`.
          */
-        private async void EditSourceButton_Click(object sender, RoutedEventArgs e)
+        private void EditSourceButton_Click(object sender, RoutedEventArgs e)
+        {
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(() => EditSourceButtonClickAsync(sender, e));
+        }
+
+        private async Task EditSourceButtonClickAsync(object sender, RoutedEventArgs e)
         {
             if (_selected == null)
             {
@@ -238,7 +253,12 @@ namespace conan_vs_extension
         /**
          * The "Supprimer" button: confirms, then runs `conan remote remove` (this only removes the remote configuration, never any already-downloaded packages).
          */
-        private async void RemoveButton_Click(object sender, RoutedEventArgs e)
+        private void RemoveButton_Click(object sender, RoutedEventArgs e)
+        {
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(() => RemoveButtonClickAsync(sender, e));
+        }
+
+        private async Task RemoveButtonClickAsync(object sender, RoutedEventArgs e)
         {
             if (_selected == null)
             {
@@ -270,7 +290,12 @@ namespace conan_vs_extension
         /**
          * The "Activer"/"Désactiver" button: toggles the remote via `conan remote enable`/`disable` without removing its configuration.
          */
-        private async void EnableDisableButton_Click(object sender, RoutedEventArgs e)
+        private void EnableDisableButton_Click(object sender, RoutedEventArgs e)
+        {
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(() => EnableDisableButtonClickAsync(sender, e));
+        }
+
+        private async Task EnableDisableButtonClickAsync(object sender, RoutedEventArgs e)
         {
             if (_selected == null)
             {

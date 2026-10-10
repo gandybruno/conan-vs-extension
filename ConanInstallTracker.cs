@@ -38,7 +38,7 @@ namespace conan_vs_extension
             JoinableTask joinableTask = ThreadHelper.JoinableTaskFactory.RunAsync(work);
             _pending[key] = joinableTask;
 
-            joinableTask.Task.ContinueWith(completedTask =>
+            _ = joinableTask.Task.ContinueWith(completedTask =>
             {
                 // Only remove our own entry - a newer install for the same key may have started
                 // (and replaced it in the dictionary) while this one was still running.

@@ -111,6 +111,7 @@ namespace conan_vs_extension
 
         private void ConanPackageManagerControl_Loaded(object sender, RoutedEventArgs e)
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
             VSColorTheme.ThemeChanged += OnThemeChanged;
             UpdateTheme();
         }
@@ -353,6 +354,7 @@ namespace conan_vs_extension
          */
         private bool IsSupportedProject()
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
             return _project != null && _project.Object is VCProject;
         }
 
@@ -361,6 +363,7 @@ namespace conan_vs_extension
          */
         private string GetProjectDirectory()
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
             return Path.GetDirectoryName(_project.FullName);
         }
 
@@ -436,6 +439,7 @@ namespace conan_vs_extension
          */
         private void UpdateLibraryInfo(string name)
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
             if (_jsonData != null && _jsonData.Libraries.ContainsKey(name))
             {
                 var library = _jsonData.Libraries[name];
@@ -608,7 +612,12 @@ namespace conan_vs_extension
          * the duration - registered with ConanInstallTracker so a Build started
          * from Visual Studio's own menu while this is running waits for it instead of racing it.
          */
-        private async void InstallButton_Click(object sender, RoutedEventArgs e)
+        private void InstallButton_Click(object sender, RoutedEventArgs e)
+        {
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(() => InstallButtonClickAsync(sender, e));
+        }
+
+        private async Task InstallButtonClickAsync(object sender, RoutedEventArgs e)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
@@ -703,7 +712,12 @@ namespace conan_vs_extension
          * for the duration and registering with ConanInstallTracker just like
          * InstallButton_Click.
          */
-        private async void RemoveButton_Click(object sender, RoutedEventArgs e)
+        private void RemoveButton_Click(object sender, RoutedEventArgs e)
+        {
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(() => RemoveButtonClickAsync(sender, e));
+        }
+
+        private async Task RemoveButtonClickAsync(object sender, RoutedEventArgs e)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 

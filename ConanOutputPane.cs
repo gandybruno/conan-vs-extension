@@ -83,7 +83,10 @@ namespace conan_vs_extension
 
             try
             {
+                // OutputStringThreadSafe is documented as callable from any thread.
+#pragma warning disable VSTHRD010
                 _pane.OutputStringThreadSafe(line + Environment.NewLine);
+#pragma warning restore VSTHRD010
             }
             catch (Exception ex)
             {
@@ -95,7 +98,7 @@ namespace conan_vs_extension
             if (nowTicks - lastTicks > TimeSpan.TicksPerSecond * 2 &&
                 System.Threading.Interlocked.CompareExchange(ref _lastBroughtIntoViewTicks, nowTicks, lastTicks) == lastTicks)
             {
-                ThreadHelper.JoinableTaskFactory.RunAsync(BringIntoViewAsync);
+                _ = ThreadHelper.JoinableTaskFactory.RunAsync(BringIntoViewAsync);
             }
         }
 
