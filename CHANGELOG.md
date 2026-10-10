@@ -37,6 +37,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Works out of the box.** "Use System Conan" is now the default: the extension uses `conan` from the system PATH and the Package Manager is only locked when Conan cannot be found. ConanCenter is selected by default as package source.
 - The build is automatically postponed and re-triggered once a running Conan
   install/update finishes, instead of racing with it.
 - Every `conan` process call is now bounded by a timeout, so a hung command can no longer
@@ -60,7 +61,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The legacy docked tool window (View > Other Windows > Conan C/C++ Package Manager),
   superseded by the per-project **Manage Conan Packages...** window.
-- The manual JFrog/GitLab source configuration, replaced by the Conan remotes list.
+- The manual JFrog/GitLab source configuration and its hard-coded defaults, replaced by the Conan remotes list.
+- The hard-coded recipe link in the package details panel.
 
 ## [2.0.10] - upstream
 

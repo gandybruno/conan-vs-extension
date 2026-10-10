@@ -8,7 +8,7 @@ using System.Windows.Forms;
 /**
  * Tools > Options > Conan Package Manager > General - lets the user point the extension at
  * a specific `conan` executable (or the one on the system PATH). The package source itself
- * (JFrog/GitLab URL, tokens...) is configured separately, per Conan remote, via
+ * (remote URLs, authentication...) is configured separately, per Conan remote, via
  * ConanPackageSourcesOptionsPage - the properties on this page whose
  * `[Browsable(false)]`-marked below exist only to reuse DialogPage's built-in
  * persistence for internal state that also needs to survive across Visual Studio sessions.
@@ -16,8 +16,9 @@ using System.Windows.Forms;
 [Guid(GuidList.strConanOptionsPage)]
 public class ConanOptionsPage : DialogPage
 {
-    private string _conanExecutablePath;
-    private bool _useSystemConan;
+    // Default configuration: use the Conan found on the system PATH.
+    private string _conanExecutablePath = GlobalSettings.SystemConanCommand;
+    private bool _useSystemConan = true;
 
     private string _selectedPackageSourceName = string.Empty;
     private string _gitLabRemoteTokensRaw = string.Empty;
@@ -33,7 +34,8 @@ public class ConanOptionsPage : DialogPage
     {
         base.OnActivate(e);
 
-        _conanExecutablePath = GlobalSettings.ConanExecutablePath;
+        _conanExecutablePath = GlobalSettings.GetResolvedConanExecutablePath();
+        _useSystemConan = _conanExecutablePath == GlobalSettings.SystemConanCommand;
         _selectedPackageSourceName = GlobalSettings.SelectedPackageSourceName;
         _gitLabRemoteTokensRaw = GlobalSettings.GitLabRemoteTokensRaw;
     }
@@ -50,7 +52,7 @@ public class ConanOptionsPage : DialogPage
             _conanExecutablePath = value?.Trim();
             GlobalSettings.ConanExecutablePath = value;
 
-            if (value != "conan")
+            if (value != GlobalSettings.SystemConanCommand)
             {
                 _useSystemConan = false;
             }
@@ -68,13 +70,13 @@ public class ConanOptionsPage : DialogPage
             _useSystemConan = value;
             if (_useSystemConan)
             {
-                _conanExecutablePath = "conan";
-                GlobalSettings.ConanExecutablePath = "conan";
+                _conanExecutablePath = GlobalSettings.SystemConanCommand;
+                GlobalSettings.ConanExecutablePath = GlobalSettings.SystemConanCommand;
             }
 
-            if (!_useSystemConan && _conanExecutablePath == "conan")
+            if (!_useSystemConan && _conanExecutablePath == GlobalSettings.SystemConanCommand)
             {
-                _conanExecutablePath = "";
+                _conanExecutablePath = string.Empty;
                 GlobalSettings.ConanExecutablePath = "";
             }
         }

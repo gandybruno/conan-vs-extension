@@ -188,6 +188,10 @@ namespace conan_vs_extension
             PackageSourceEntry toSelect = _sources.FirstOrDefault(s =>
                 string.Equals(s.DisplayName, GlobalSettings.SelectedPackageSourceName, StringComparison.OrdinalIgnoreCase));
 
+            // Nothing remembered (first use): default to ConanCenter when it is configured.
+            toSelect = toSelect ?? _sources.FirstOrDefault(s =>
+                string.Equals(s.DisplayName, "conancenter", StringComparison.OrdinalIgnoreCase));
+
             // Setting SelectedItem fires PackageSourceComboBox_SelectionChanged, which kicks off
             // the first real fetch for whichever source ends up selected (and hides the loading
             // overlay once that fetch completes, one way or another).
@@ -472,7 +476,6 @@ namespace conan_vs_extension
             VersionsComboBox.SelectedIndex = 0;
 
             MoreInfoHyperlink.NavigateUri = GetMoreInfoUri(name);
-            GitHubRecipeLink.NavigateUri = new Uri("https://example.com/");
 
             string projectDirectory = GetProjectDirectory();
             var requirements = ConanFileManager.GetConandataRequirements(projectDirectory);
@@ -594,6 +597,11 @@ namespace conan_vs_extension
                 if (match.Success)
                 {
                     return new Uri($"{match.Groups["base"].Value}/-/packages?search[]={Uri.EscapeDataString(name)}");
+                }
+
+                if (Regex.IsMatch(source.RemoteUrl ?? string.Empty, @"^https?://center2?\.conan\.io/?$", RegexOptions.IgnoreCase))
+                {
+                    return new Uri($"https://conan.io/center/recipes/{Uri.EscapeDataString(name)}");
                 }
 
                 if (Uri.TryCreate(source.RemoteUrl, UriKind.Absolute, out Uri remoteUri))
@@ -825,11 +833,11 @@ namespace conan_vs_extension
         }
 
         /**
-         * Whether a Conan executable path has been configured yet - most of the UI stays disabled until it has.
+         * Whether a usable Conan executable was found (the configured path, or `conan` on the system PATH by default) - most of the UI stays disabled until it is.
          */
         private bool IsConanInitialized()
         {
-            return !string.IsNullOrEmpty(GlobalSettings.ConanExecutablePath);
+            return GlobalSettings.IsConanAvailable();
         }
 
         /**
@@ -844,7 +852,7 @@ namespace conan_vs_extension
             InstalledTabButton.IsEnabled = enabled;
             PackageSourceComboBox.IsEnabled = enabled;
 
-            LibrarySearchComboBox.Text = enabled ? "" : "Cliquez sur 'Configurer' pour définir le chemin de Conan -->";
+            LibrarySearchComboBox.Text = enabled ? "" : "Conan introuvable : cliquez sur 'Configurer' pour définir son chemin -->";
         }
 
         /**

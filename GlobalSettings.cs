@@ -9,31 +9,10 @@ using Newtonsoft.Json;
 namespace conan_vs_extension{
 
     /**
-     * Legacy setting, kept only so old persisted-settings.json files still deserialize: which
-     * registry the now-removed single-source package browser used to fetch its package list
-     * from. Not used by the current NuGet-style Package Manager (ConanPackageManagerControl),
-     * which instead lists every package source from `conan remote list` (see ConanRemoteHelper)
-     * and no longer needs this switch.
-     */
-    public enum PackageRegistrySource
-    {
-        /**
-         * Fetch the package list from a JFrog Artifactory "packages.ref.json" index.
-         */
-        JFrog,
-        /**
-         * Fetch the package list from a single, manually-configured GitLab Package Registry project.
-         */
-        GitLab
-    }
-
-    /**
      * Process-wide (in-memory, static) settings for the extension. Two different persistence
      * strategies are used side by side here, for two different reasons:
      *
-     * - ConanExecutablePath and the legacy JFrog/GitLab fields below it are
-     * backed by ConanOptionsPage's DialogPage persistence, which only flushes to disk
-     * when Tools > Options is closed with OK.
+     * - ConanExecutablePath is backed by ConanOptionsPage's DialogPage persistence, which\r\n     * only flushes to disk when Tools > Options is closed with OK.
      * - SelectedPackageSourceName and GitLabRemoteTokensRaw are
      * written continuously at runtime (every time the user picks a different package source, or
      * types a GitLab token into the "browse" prompt) and are instead persisted immediately to a
@@ -42,7 +21,12 @@ namespace conan_vs_extension{
      */
     public static class GlobalSettings
     {
-        private static string _conanExecutablePath = string.Empty;
+        /**
+         * The bare command resolved from the system PATH - the default when nothing was configured.
+         */
+        public const string SystemConanCommand = "conan";
+
+        private static string _conanExecutablePath = SystemConanCommand;
 
         /**
          * Full path to the `conan` executable to invoke for every command this extension runs
@@ -79,66 +63,54 @@ namespace conan_vs_extension{
          */
         public static string GetResolvedConanExecutablePath()
         {
-            return string.IsNullOrWhiteSpace(ConanExecutablePath) ? "conan" : ConanExecutablePath;
+            return string.IsNullOrWhiteSpace(ConanExecutablePath) ? SystemConanCommand : ConanExecutablePath;
         }
 
         /**
-         * Which registry the LEGACY single-source package browser should fetch its package list
-         * from. See PackageRegistrySource.
+         * Whether the Conan command that would be run (see GetResolvedConanExecutablePath) can be
+         * found: an explicit path must exist on disk, a bare command is looked up on the system
+         * PATH (trying the usual Windows executable extensions). Only checks the file system -
+         * it never starts the process.
+         *
+         * @return true if a Conan executable could be located.
          */
-        public static PackageRegistrySource PackageSource { get; set; } = PackageRegistrySource.JFrog;
-
-        // ---- JFrog Artifactory settings (legacy single-source browser only) ----
-
-        private static string _jFrogPackagesUrl = "https://jfrog.example.com/artifactory/conan/.conan/packages.ref.json";
-
-        /**
-         * URL of the JFrog Artifactory "packages.ref.json" index to fetch (legacy single-source browser only).
-         */
-        public static string JFrogPackagesUrl
+        public static bool IsConanAvailable()
         {
-            get => _jFrogPackagesUrl;
-            set => _jFrogPackagesUrl = string.IsNullOrWhiteSpace(value) ? _jFrogPackagesUrl : value.Trim();
+            string command = GetResolvedConanExecutablePath();
+
+            if (command.IndexOfAny(new[] { '\\', '/' }) >= 0 || Path.IsPathRooted(command))
+            {
+                return File.Exists(command);
+            }
+
+            string[] extensions = { string.Empty, ".exe", ".cmd", ".bat" };
+            string pathVariable = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+
+            foreach (string directory in pathVariable.Split(Path.PathSeparator))
+            {
+                if (string.IsNullOrWhiteSpace(directory))
+                {
+                    continue;
+                }
+
+                foreach (string extension in extensions)
+                {
+                    try
+                    {
+                        if (File.Exists(Path.Combine(directory.Trim().Trim('"'), command + extension)))
+                        {
+                            return true;
+                        }
+                    }
+                    catch (ArgumentException)
+                    {
+                        // Malformed PATH entry - ignore it.
+                    }
+                }
+            }
+
+            return false;
         }
-
-        // ---- GitLab Package Registry (Conan) settings (legacy single-source browser only) ----
-
-        private static string _gitLabUrl = string.Empty;
-
-        /**
-         * Base URL of the GitLab instance, e.g. "https://gitlab.com" or "https://gitlab.mycompany.com" (legacy single-source browser only).
-         */
-        public static string GitLabUrl
-        {
-            get => _gitLabUrl;
-            set => _gitLabUrl = value?.Trim().TrimEnd('/');
-        }
-
-        private static string _gitLabProjectId = string.Empty;
-
-        /**
-         * Numeric GitLab project ID, or URL-encoded project path (e.g. "group%2Fsubgroup%2Fproject") (legacy single-source browser only).
-         */
-        public static string GitLabProjectId
-        {
-            get => _gitLabProjectId;
-            set => _gitLabProjectId = value?.Trim();
-        }
-
-        private static string _gitLabPrivateToken = string.Empty;
-
-        /**
-         * Personal/Project access token with at least "read_api" scope, required only for
-         * private projects (leave empty for public ones). Used by the legacy single-source
-         * "GitLab (manuel)" entry only - the current multi-remote UI stores one token per remote
-         * instead, see GetGitLabTokenForRemote/SetGitLabTokenForRemote.
-         */
-        public static string GitLabPrivateToken
-        {
-            get => _gitLabPrivateToken;
-            set => _gitLabPrivateToken = value?.Trim();
-        }
-
         // ---- Multi-remote support (NuGet-style "Source de package" list) ----
         //
         // These two are written continuously at runtime (every time the user picks a different
@@ -238,10 +210,10 @@ namespace conan_vs_extension{
         }
 
         /**
-         * Returns the GitLab access token stored for remoteName, falling back to the legacy single GitLabPrivateToken if none was set for it.
+         * Returns the GitLab access token stored for remoteName, or an empty string if none was set for it.
          *
          * @param remoteName A Conan remote name, as returned by `conan remote list`.
-         * @return The stored token, or an empty/legacy value if none is set.
+         * @return The stored token, or an empty string if none is set.
          */
         public static string GetGitLabTokenForRemote(string remoteName)
         {
@@ -254,9 +226,7 @@ namespace conan_vs_extension{
                 }
             }
 
-            // Fall back to the legacy single token, in case the same GitLab project was
-            // previously configured through the manual GitLab source.
-            return GitLabPrivateToken;
+            return string.Empty;
         }
 
         /**
