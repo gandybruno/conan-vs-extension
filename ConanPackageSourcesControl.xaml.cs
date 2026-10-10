@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -149,7 +149,12 @@ namespace conan_vs_extension
                     return;
                 }
 
-                (bool logoutSuccess, string logoutError) = await ConanRemoteHelper.LogoutRemoteAsync(_selected.Name);
+                bool logoutSuccess;
+            string logoutError;
+            using (BusyIndicator.Show(this, "Op\u00e9ration Conan en cours..."))
+            {
+                (logoutSuccess, logoutError) = await ConanRemoteHelper.LogoutRemoteAsync(_selected.Name);
+            }
                 if (!logoutSuccess)
                 {
                     MessageBox.Show($"Impossible de se déconnecter de '{_selected.Name}' :\n{logoutError}", "Conan C/C++ Package Manager",
@@ -169,7 +174,12 @@ namespace conan_vs_extension
                 return;
             }
 
-            (bool loginSuccess, string loginError) = await ConanRemoteHelper.LoginRemoteAsync(_selected.Name, credentials.Value.username, credentials.Value.password);
+            bool loginSuccess;
+            string loginError;
+            using (BusyIndicator.Show(this, "Authentification en cours (peut prendre quelques secondes)..."))
+            {
+                (loginSuccess, loginError) = await ConanRemoteHelper.LoginRemoteAsync(_selected.Name, credentials.Value.username, credentials.Value.password);
+            }
             if (!loginSuccess)
             {
                 MessageBox.Show($"Authentification impossible sur '{_selected.Name}' :\n{loginError}", "Conan C/C++ Package Manager",
@@ -196,7 +206,12 @@ namespace conan_vs_extension
                 return;
             }
 
-            (bool success, string error) = await ConanRemoteHelper.AddRemoteAsync(info.Name, info.Url, info.VerifySsl);
+            bool success;
+            string error;
+            using (BusyIndicator.Show(this, "Ajout du remote en cours..."))
+            {
+                (success, error) = await ConanRemoteHelper.AddRemoteAsync(info.Name, info.Url, info.VerifySsl);
+            }
 
             if (!success)
             {
@@ -212,10 +227,15 @@ namespace conan_vs_extension
 
                 if (!string.IsNullOrEmpty(info.Username))
                 {
-                    (bool loginSuccess, string loginError) = await ConanRemoteHelper.LoginRemoteAsync(info.Name, info.Username, info.Token);
+                    bool loginSuccess;
+            string loginError;
+            using (BusyIndicator.Show(this, "Authentification en cours (peut prendre quelques secondes)..."))
+            {
+                (loginSuccess, loginError) = await ConanRemoteHelper.LoginRemoteAsync(info.Name, info.Username, info.Token);
+            }
                     if (!loginSuccess)
                     {
-                        MessageBox.Show($"Le remote '{info.Name}' a Ã©tÃ© ajoutÃ© mais l'authentification a Ã©chouÃ© :\n{loginError}",
+                        MessageBox.Show($"Le remote '{info.Name}' a été ajouté mais l'authentification a échoué :\n{loginError}",
                             "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
                     }
                 }
@@ -248,7 +268,12 @@ namespace conan_vs_extension
                 return;
             }
 
-            (bool success, string error) = await ConanRemoteHelper.UpdateRemoteUrlAsync(_selected.Name, input.Trim(), _selected.VerifySsl);
+            bool success;
+            string error;
+            using (BusyIndicator.Show(this, "Op\u00e9ration Conan en cours..."))
+            {
+                (success, error) = await ConanRemoteHelper.UpdateRemoteUrlAsync(_selected.Name, input.Trim(), _selected.VerifySsl);
+            }
 
             if (!success)
             {
@@ -284,7 +309,12 @@ namespace conan_vs_extension
                 return;
             }
 
-            (bool success, string error) = await ConanRemoteHelper.RemoveRemoteAsync(_selected.Name);
+            bool success;
+            string error;
+            using (BusyIndicator.Show(this, "Op\u00e9ration Conan en cours..."))
+            {
+                (success, error) = await ConanRemoteHelper.RemoveRemoteAsync(_selected.Name);
+            }
 
             if (!success)
             {
@@ -312,9 +342,14 @@ namespace conan_vs_extension
                 return;
             }
 
-            (bool success, string error) = _selected.Enabled
+            bool success;
+            string error;
+            using (BusyIndicator.Show(this, "Op\u00e9ration Conan en cours..."))
+            {
+                (success, error) = _selected.Enabled
                 ? await ConanRemoteHelper.DisableRemoteAsync(_selected.Name)
                 : await ConanRemoteHelper.EnableRemoteAsync(_selected.Name);
+            }
 
             if (!success)
             {
@@ -327,6 +362,59 @@ namespace conan_vs_extension
         }
     }
 
+    /**
+     * Shows a small always-on-top "please wait" window with an animated bar and disables the page
+     * for the duration of a slow `conan` call (login in particular can take several seconds), so
+     * the user can tell that something is happening. Dispose to hide it again.
+     */
+    internal sealed class BusyIndicator : IDisposable
+    {
+        private readonly UIElement _owner;
+        private readonly System.Windows.Forms.Form _form;
+
+        public static BusyIndicator Show(UIElement owner, string message)
+        {
+            return new BusyIndicator(owner, message);
+        }
+
+        private BusyIndicator(UIElement owner, string message)
+        {
+            _owner = owner;
+            _owner.IsEnabled = false;
+            System.Windows.Input.Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
+
+            _form = new System.Windows.Forms.Form
+            {
+                Text = "Conan C/C++ Package Manager",
+                StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen,
+                FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow,
+                ControlBox = false,
+                ShowInTaskbar = false,
+                TopMost = true,
+                ClientSize = new System.Drawing.Size(380, 74)
+            };
+            _form.Controls.Add(new System.Windows.Forms.Label { Text = message, Left = 12, Top = 12, Width = 356, AutoSize = false });
+            _form.Controls.Add(new System.Windows.Forms.ProgressBar
+            {
+                Left = 12,
+                Top = 40,
+                Width = 356,
+                Height = 18,
+                Style = System.Windows.Forms.ProgressBarStyle.Marquee,
+                MarqueeAnimationSpeed = 30
+            });
+            _form.Show();
+            _form.Refresh();
+        }
+
+        public void Dispose()
+        {
+            _form.Close();
+            _form.Dispose();
+            _owner.IsEnabled = true;
+            System.Windows.Input.Mouse.OverrideCursor = null;
+        }
+    }
     /**
      * Result of AddRemoteDialog: a plain Conan remote (Name + Url) or a GitLab Package Registry
      * (Url already built from the server and project, plus the optional Username/Token).
@@ -363,38 +451,38 @@ namespace conan_vs_extension
             };
 
             var typeLabel = new System.Windows.Forms.Label { Text = "Type :", Left = 12, Top = 15, AutoSize = true };
-            var typeCombo = new System.Windows.Forms.ComboBox { Left = 130, Top = 12, Width = 330, DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList };
+            var typeCombo = new System.Windows.Forms.ComboBox { Left = 190, Top = 12, Width = 340, DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList };
             typeCombo.Items.Add("Remote Conan (URL)");
             typeCombo.Items.Add("GitLab Package Registry");
             typeCombo.SelectedIndex = 0;
 
             var nameLabel = new System.Windows.Forms.Label { Text = "Nom :", Left = 12, Top = 48, AutoSize = true };
-            var nameBox = new System.Windows.Forms.TextBox { Left = 130, Top = 45, Width = 330 };
+            var nameBox = new System.Windows.Forms.TextBox { Left = 190, Top = 45, Width = 340 };
 
             var urlLabel = new System.Windows.Forms.Label { Text = "Source (URL) :", Left = 12, Top = 81, AutoSize = true };
-            var urlBox = new System.Windows.Forms.TextBox { Left = 130, Top = 78, Width = 330 };
+            var urlBox = new System.Windows.Forms.TextBox { Left = 190, Top = 78, Width = 340 };
 
             var projectLabel = new System.Windows.Forms.Label { Text = "ID ou chemin du projet :", Left = 12, Top = 114, AutoSize = true };
-            var projectBox = new System.Windows.Forms.TextBox { Left = 130, Top = 111, Width = 330 };
+            var projectBox = new System.Windows.Forms.TextBox { Left = 190, Top = 111, Width = 340 };
 
             var userLabel = new System.Windows.Forms.Label { Text = "Utilisateur :", Left = 12, Top = 147, AutoSize = true };
-            var userBox = new System.Windows.Forms.TextBox { Left = 130, Top = 144, Width = 330 };
+            var userBox = new System.Windows.Forms.TextBox { Left = 190, Top = 144, Width = 340 };
 
-            var tokenLabel = new System.Windows.Forms.Label { Text = "Token d'accÃ¨s :", Left = 12, Top = 180, AutoSize = true };
-            var tokenBox = new System.Windows.Forms.TextBox { Left = 130, Top = 177, Width = 330, UseSystemPasswordChar = true };
+            var tokenLabel = new System.Windows.Forms.Label { Text = "Token d'accès :", Left = 12, Top = 180, AutoSize = true };
+            var tokenBox = new System.Windows.Forms.TextBox { Left = 190, Top = 177, Width = 340, UseSystemPasswordChar = true };
 
             var hintLabel = new System.Windows.Forms.Label
             {
                 Left = 12,
                 Top = 210,
-                Width = 448,
+                Width = 518,
                 Height = 46,
                 ForeColor = System.Drawing.SystemColors.GrayText,
-                Text = "Token GitLab (personnel, de projet ou de dÃ©ploiement) avec les scopes read_api et read_package_registry. " +
+                Text = "Token GitLab (personnel, de projet ou de déploiement) avec les scopes read_api et read_package_registry. " +
                        "Laissez l'utilisateur et le token vides pour un projet public."
             };
 
-            var sslBox = new System.Windows.Forms.CheckBox { Text = "VÃ©rifier SSL", Left = 130, Checked = true, AutoSize = true };
+            var sslBox = new System.Windows.Forms.CheckBox { Text = "Vérifier SSL", Left = 190, Checked = true, AutoSize = true };
             var okButton = new System.Windows.Forms.Button { Text = "Ajouter", Width = 90, DialogResult = System.Windows.Forms.DialogResult.OK };
             var cancelButton = new System.Windows.Forms.Button { Text = "Annuler", Width = 90, DialogResult = System.Windows.Forms.DialogResult.Cancel };
 
@@ -420,10 +508,10 @@ namespace conan_vs_extension
                 int bottom = gitlab ? 262 : 118;
                 sslBox.Top = bottom + 4;
                 okButton.Top = bottom;
-                okButton.Left = 275;
+                okButton.Left = 345;
                 cancelButton.Top = bottom;
-                cancelButton.Left = 370;
-                form.ClientSize = new System.Drawing.Size(472, bottom + 42);
+                cancelButton.Left = 440;
+                form.ClientSize = new System.Drawing.Size(542, bottom + 42);
             }
 
             typeCombo.SelectedIndexChanged += (s, e) => UpdateLayout();
