@@ -1,100 +1,99 @@
 name: Build conan-vs-extension
 
+# Gitflow:
+#  - pushes to `develop` and pull requests only *verify* that the extension compiles
+#    (nothing is uploaded or released);
+#  - a `v*` tag pushed on a commit that belongs to `master` builds the VSIX, checks that the
+#    tag matches the manifest version and creates the GitHub release containing it.
 on:
   push:
-    branches: [ develop2 ]
+    branches: [ develop ]
+    tags: [ 'v*' ]
   pull_request:
-    branches: [ develop2 ]
+    branches: [ develop, master ]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout the repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+
+      - name: Check that the tag is on master
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          git fetch origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::Tag $GITHUB_REF_NAME is not on master - releases must be tagged on master."
+            exit 1
+          fi
+
+      - name: Check that the tag matches the manifest version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's/.*<Identity Id="[^"]*" Version="\([^"]*\)".*/\1/p' source.extension.vsixmanifest | head -n 1)
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match source.extension.vsixmanifest version v$VERSION."
+            exit 1
+          fi
 
       - name: Cache NuGet packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
-          path: ~\nuget\packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.config') }}
+          path: ~\.nuget\packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
       - name: Setup NuGet
-        uses: nuget/setup-nuget@v1
+        uses: nuget/setup-nuget@v2
 
       - name: Setup msbuild
         uses: microsoft/setup-msbuild@v2
 
       - name: Restore NuGet
-        run: nuget restore
+        run: nuget restore conan-vs-extension.sln
 
       - name: Build conan-vs-extension
-        run: msbuild /p:configuration=Release /p:Platform="Any CPU" /p:DeployExtension=false /p:ZipPackageCompressionLevel=normal
+        run: msbuild conan-vs-extension.sln /p:configuration=Release /p:Platform="Any CPU" /p:DeployExtension=false /p:ZipPackageCompressionLevel=normal
 
       - name: Upload VSIX as artifact
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: conan-vs-extension.vsix
           path: bin\Release\conan-vs-extension.vsix
           if-no-files-found: error
 
-  releaseDraft:
-    name: Release draft
-    if: github.event_name != 'pull_request' && github.ref_name == 'develop2'
+  release:
+    name: Create release
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [ build ]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout the repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Download extension artifact from latest workflow build
+      - name: Download extension artifact
         uses: actions/download-artifact@v4
         with:
           name: conan-vs-extension.vsix
-          run-id: ${{ needs.build.run_id }}
 
-      - name: Remove old release drafts
+      - name: Create the release
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          gh api repos/{owner}/{repo}/releases \
-            --jq '.[] | select(.draft == true) | .id' \
-            | xargs -I '{}' gh api -X DELETE repos/{owner}/{repo}/releases/{}
-
-      - name: Get release version
-        id: version
-        run: |
-          VERSION=$(sed -n 's/.*<Identity Id="[^"]*" Version="\([^"]*\)".*/\1/p' source.extension.vsixmanifest | head -n 1)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Create new release draft
-        uses: actions/create-release@v1
-        id: create_release
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          draft: true
-          prerelease: false
-          release_name: v${{ steps.version.outputs.version }}
-          tag_name: v${{ steps.version.outputs.version }}
-
-      - name: Upload extension artifact to new release draft
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: conan-vs-extension.vsix
-          asset_name: conan-vs-extension.vsix
-          asset_content_type: application/vsix
+          gh release create "$GITHUB_REF_NAME" conan-vs-extension.vsix \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --draft

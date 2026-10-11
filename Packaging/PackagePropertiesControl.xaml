@@ -1,0 +1,128 @@
+<UserControl x:Class="conan_vs_extension.Packaging.PackagePropertiesControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:conan_vs_extension"
+             xmlns:vsshell="clr-namespace:Microsoft.VisualStudio.Shell;assembly=Microsoft.VisualStudio.Shell.15.0"
+             Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"
+             Foreground="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="950">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/conan-vs-extension;component/Resources/ThemedStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="0,0,12,8"/>
+            </Style>
+
+            <Style x:Key="FieldStyle" TargetType="TextBox" BasedOn="{StaticResource ThemedTextBoxStyle}">
+                <Setter Property="Padding" Value="4,3"/>
+                <Setter Property="Margin" Value="0,0,0,8"/>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="640" HorizontalAlignment="Left" Margin="0,0,12,12">
+
+                <TextBlock FontSize="16" FontWeight="SemiBold" Margin="0,0,0,6"
+                           Text="{local:Loc 'Package this library with Conan', 'Empaqueter cette bibliothèque avec Conan'}"/>
+                <TextBlock TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,14"
+                           Text="{local:Loc 'Visual Studio builds the selected configurations, then their binaries and the public headers are packaged into the local Conan cache. Nothing is uploaded.', 'Visual Studio compile les configurations sélectionnées, puis leurs binaires et les headers publics sont empaquetés dans le cache Conan local. Rien n\'est envoyé sur un remote.'}"/>
+
+                <!-- Why the form is read-only or has no effect (not a library, hand-edited files). -->
+                <Border x:Name="NoticeBorder" Visibility="Collapsed" Padding="8,6" Margin="0,0,0,14" BorderThickness="1"
+                        BorderBrush="{DynamicResource {x:Static vsshell:VsBrushes.HighlightKey}}">
+                    <TextBlock x:Name="NoticeTextBlock" TextWrapping="Wrap"/>
+                </Border>
+
+                <StackPanel x:Name="FormPanel">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="{local:Loc 'Name', 'Nom'}" Style="{StaticResource FieldLabelStyle}"/>
+                        <TextBox x:Name="NameTextBox" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource FieldStyle}"
+                                 ToolTip="{local:Loc 'Name of the Conan package, in lowercase.', 'Nom du paquet Conan, en minuscules.'}"/>
+
+                        <TextBlock Grid.Row="1" Text="{local:Loc 'Version', 'Version'}" Style="{StaticResource FieldLabelStyle}"/>
+                        <TextBox x:Name="VersionTextBox" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource FieldStyle}"
+                                 ToolTip="{local:Loc 'Stored in version.txt, next to the project.', 'Enregistrée dans version.txt, à côté du projet.'}"/>
+
+                        <TextBlock Grid.Row="2" Text="{local:Loc 'License', 'Licence'}" Style="{StaticResource FieldLabelStyle}"/>
+                        <TextBox x:Name="LicenseTextBox" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource FieldStyle}"
+                                 ToolTip="{local:Loc 'Optional. For example MIT, Apache-2.0 or Proprietary.', 'Facultative. Par exemple MIT, Apache-2.0 ou Proprietary.'}"/>
+
+                        <TextBlock Grid.Row="3" Text="{local:Loc 'Description', 'Description'}" Style="{StaticResource FieldLabelStyle}"/>
+                        <TextBox x:Name="DescriptionTextBox" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource FieldStyle}"/>
+
+                        <TextBlock Grid.Row="4" Text="{local:Loc 'Public headers folder', 'Dossier des headers publics'}" Style="{StaticResource FieldLabelStyle}"/>
+                        <TextBox x:Name="HeadersTextBox" Grid.Row="4" Grid.Column="1" Style="{StaticResource FieldStyle}"
+                                 ToolTip="{local:Loc 'Relative to the project. Its header files (*.h, *.hpp...) are packaged, with their subfolders.', 'Relatif au projet. Ses fichiers d\'en-tête (*.h, *.hpp...) sont empaquetés, avec leurs sous-dossiers.'}"/>
+                        <Button x:Name="BrowseHeadersButton" Grid.Row="4" Grid.Column="2" Content="{local:Loc 'Folder...', 'Dossier...'}"
+                                Margin="8,0,0,8" Padding="10,3" Click="BrowseHeadersButton_Click" Style="{StaticResource ThemedButtonStyle}"/>
+                    </Grid>
+
+                    <CheckBox x:Name="PdbCheckBox" Margin="0,6,0,8" Style="{StaticResource ThemedCheckBoxStyle}"
+                              Content="{local:Loc 'Include the debug symbols (.pdb)', 'Inclure les symboles de débogage (.pdb)'}"/>
+                    <CheckBox x:Name="ToolsetCompatibilityCheckBox" Margin="0,0,0,14" Style="{StaticResource ThemedCheckBoxStyle}"
+                              Content="{local:Loc 'Usable by projects built with a newer MSVC toolset', 'Utilisable par les projets compilés avec un toolset MSVC plus récent'}"
+                              ToolTip="{local:Loc 'A project built with a newer Visual Studio can use these binaries instead of asking for its own. Never the other way round.', 'Un projet compilé avec un Visual Studio plus récent peut utiliser ces binaires au lieu de réclamer les siens. Jamais l\'inverse.'}"/>
+
+                    <TextBlock x:Name="ConfigurationsHeading" FontWeight="SemiBold" Margin="0,0,0,6" Text="{local:Loc 'Configurations to package', 'Configurations à empaqueter'}"/>
+                    <ItemsControl x:Name="ConfigurationsItemsControl" Margin="0,0,0,14">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,0,0,6">
+                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" IsEnabled="{Binding IsLibrary}"
+                                              Content="{Binding Label}" Style="{StaticResource ThemedCheckBoxStyle}"/>
+                                    <TextBlock Text="{Binding Warning}" Visibility="{Binding WarningVisibility}"
+                                               TextWrapping="Wrap" Opacity="0.8" FontSize="11" Margin="22,2,0,0"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Above the buttons, so the answer to a click is in view next to them. -->
+                    <TextBlock x:Name="StatusTextBlock" TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed"/>
+
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="SaveButton" Content="{local:Loc 'Save', 'Enregistrer'}" Padding="14,4" Click="SaveButton_Click" Style="{StaticResource ThemedButtonStyle}"
+                                ToolTip="{local:Loc 'Writes conandata.yml, version.txt and the recipe (conanfile.py).', 'Écrit conandata.yml, version.txt et la recette (conanfile.py).'}"/>
+                        <Button x:Name="CreateButton" Content="{local:Loc 'Create package', 'Créer le paquet'}" Margin="12,0,0,0" Padding="14,4" Click="CreateButton_Click" Style="{StaticResource ThemedButtonStyle}"
+                                ToolTip="{local:Loc 'Saves, builds the selected configurations and packages them into the local Conan cache.', 'Enregistre, compile les configurations sélectionnées et les empaquette dans le cache Conan local.'}"/>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border x:Name="OperationOverlay" Visibility="Collapsed" Opacity="0.97"
+                Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="360">
+                <ProgressBar IsIndeterminate="True" Width="220" Height="4" Margin="0,0,0,14"/>
+                <TextBlock x:Name="OperationStatusText" HorizontalAlignment="Center" TextWrapping="Wrap" FontWeight="SemiBold" TextAlignment="Center"/>
+                <TextBlock Text="{local:Loc 'Details are shown in the Output window (Build and Conan panes).', 'Le détail s\'affiche dans la fenêtre Output (onglets Build et Conan).'}"
+                           HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Opacity="0.7" FontSize="11" Margin="0,10,0,0"/>
+                <Button x:Name="CancelButton" Content="{local:Loc 'Cancel', 'Annuler'}" Margin="0,16,0,0" Padding="14,4" Click="CancelButton_Click"
+                        HorizontalAlignment="Center" Style="{StaticResource ThemedButtonStyle}"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

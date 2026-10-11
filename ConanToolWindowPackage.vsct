@@ -46,7 +46,19 @@
         <Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS1"/>
         <Icon guid="guidImages" id="bmpPic1" />
         <Strings>
-          <ButtonText>Conan C/C++ Package Manager</ButtonText>
+          <ButtonText>Manage Conan Packages...</ButtonText>
+        </Strings>
+      </Button>
+
+      <!-- "Create Conan Package": only shown for a project that builds a library, and its text
+           follows the Visual Studio language (see CreatePackageCommand). -->
+      <Button guid="guidConanToolWindowPackageCmdSet" id="CreateConanPackageCommandId" priority="0xF101" type="Button">
+        <Parent guid="guidSHLMainMenu" id="IDG_VS_PROJ_REFERENCE"/>
+        <CommandFlag>DefaultInvisible</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <CommandFlag>TextChanges</CommandFlag>
+        <Strings>
+          <ButtonText>Create Conan Package</ButtonText>
         </Strings>
       </Button>
     </Buttons>
@@ -62,6 +74,32 @@
     </Bitmaps>
   </Commands>
 
+  <!--CommandPlacements lets the SAME command (same guid+id, defined once above under Commands)
+      also show up in additional menus, mirroring how NuGet's "Manage NuGet Packages..." appears
+      both in the top-level "Project" menu and in the project's right-click context menu in
+      Solution Explorer. This element must be a sibling of Commands, not nested inside it. -->
+  <CommandPlacements>
+    <!-- Project menu (Project > ... > Manage Conan Packages...). IDG_VS_PROJ_ADMIN turned out to
+         not be rendered at all by this project system (the command disappeared entirely), so use
+         IDG_VS_PROJ_REFERENCE instead: it's the group actually backing "Ajouter une référence...",
+         which sits right above where NuGet's own entry appears, and a high priority sorts our
+         command after it, close to the desired spot instead of up near "Add module/class"
+         (IDG_VS_PROJ_MISCADD). -->
+    <CommandPlacement guid="guidConanToolWindowPackageCmdSet" id="ConanToolWindowCommandId" priority="0xF100">
+      <Parent guid="guidSHLMainMenu" id="IDG_VS_PROJ_REFERENCE"/>
+    </CommandPlacement>
+
+    <!-- Project node context menu in Solution Explorer (right-click project > Manage Conan Packages...) -->
+    <CommandPlacement guid="guidConanToolWindowPackageCmdSet" id="ConanToolWindowCommandId" priority="0xF100">
+      <Parent guid="guidSHLMainMenu" id="IDG_VS_CTXT_PROJECT_ADD"/>
+    </CommandPlacement>
+
+    <!-- Project node context menu (right-click project > Create Conan Package) -->
+    <CommandPlacement guid="guidConanToolWindowPackageCmdSet" id="CreateConanPackageCommandId" priority="0xF101">
+      <Parent guid="guidSHLMainMenu" id="IDG_VS_CTXT_PROJECT_ADD"/>
+    </CommandPlacement>
+  </CommandPlacements>
+
   <Symbols>
     <!-- This is the package guid. -->
     <GuidSymbol name="guidConanToolWindowPackage" value="{aa174917-4533-456c-b017-3e359a30f0e2}" />
@@ -69,6 +107,7 @@
     <!-- This is the guid used to group the menu commands together -->
     <GuidSymbol name="guidConanToolWindowPackageCmdSet" value="{3e9359cf-7e7a-4e99-8c6d-254264e59580}">
       <IDSymbol name="ConanToolWindowCommandId" value="0x0100" />
+      <IDSymbol name="CreateConanPackageCommandId" value="0x0101" />
     </GuidSymbol>
 
     <GuidSymbol name="guidImages" value="{5d2bcb0e-c5d8-4544-8cf0-1cb740d14144}" >

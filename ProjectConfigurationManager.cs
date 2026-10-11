@@ -3,23 +3,33 @@ using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.VCProjectEngine;
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Runtime.Remoting.Messaging;
 using System.Threading.Tasks;
-using System.Windows.Forms;
-using VSLangProj;
 
 namespace conan_vs_extension
 {
+    /**
+     * Everything involved in wiring a Visual C++ project up to Conan: detecting whether a
+     * project has opted in (conandataFileExists), generating the pre-build script
+     * that used to be the only way `conan install` ran (SaveConanPrebuildEventsAllConfigAsync),
+     * proactively running `conan install` ahead of time instead (EnsureConanPackagesInstalledAsync),
+     * and injecting the resulting `conandeps.props` into the project so MSBuild actually
+     * picks up the installed libraries (InjectConanDepsAsync). Also home to several
+     * small EnvDTE project-tree helpers (GetStartupProject, GetAllProjectsFlat, ...)
+     * used throughout the rest of the extension.
+     */
     public class ProjectConfigurationManager
     {
-        
+
         public ProjectConfigurationManager()
         {
         }
 
+        /**
+         * Whether the project has opted into Conan, i.e. has a `conandata.yml` next to its project file.
+         */
         public static bool conandataFileExists(Project project)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -28,6 +38,9 @@ namespace conan_vs_extension
             return File.Exists(path);
         }
 
+        /**
+         * Adds the generated `conandeps.props` property sheet to every configuration of the project, if it exists on disk and isn't already referenced.
+         */
         public static async Task InjectConanDepsToAllConfigsAsync(Project project)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -48,6 +61,9 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Adds the generated `conandeps.props` property sheet to a single configuration and saves the project, if the props file exists and isn't already referenced. No-op if the project hasn't opted into Conan.
+         */
         public static async Task InjectConanDepsAsync(Project project, VCConfiguration vcConfig)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -70,6 +86,9 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Adds propsFilePath as a property sheet of vcConfig, unless it's already one.
+         */
         private static void InjectConanDepsToConfig(VCConfiguration vcConfig, string propsFilePath)
         {
             bool isAlreadyIncluded = false;
@@ -88,6 +107,9 @@ namespace conan_vs_extension
             }
         }
         
+        /**
+         * Path to the MSBuild property sheet Conan's MSBuildDeps generator writes (`<project>\conan\conandeps.props`).
+         */
         private static string GetPropsFilePath(Project project)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -96,6 +118,16 @@ namespace conan_vs_extension
             return Path.Combine(projectDirectory, "conan", "conandeps.props");
         }
 
+        /**
+         * Writes `.conan\conan_install.bat` - a change-detecting wrapper around `conan
+         * install` used by the pre-build event (see SaveConanPrebuildEventAsync).
+         * It compares conandata.yml/conanfile.py/version.txt (and a `.runconan` marker
+         * written whenever a profile changes) against snapshots taken after the last successful
+         * install, and only re-runs `conan install` when something actually changed - deliberately
+         * failing the build the first time it does, since Conan needs to run and MSBuild pick up
+         * the result before the same build can succeed (see EnsureConanPackagesInstalledAsync
+         * for how this extension avoids that "build twice" cycle in the common case).
+         */
         private static async Task GenerateConanInstallScriptAsync(Project project)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -104,7 +136,12 @@ namespace conan_vs_extension
             string projectDirectory = Path.GetDirectoryName(project.FullName);
             string conanScriptDirectory = Path.Combine(projectDirectory, ".conan");
             string scriptPath = Path.Combine(conanScriptDirectory, conan_script_name);
-            string conanPath = GlobalSettings.ConanExecutablePath;
+            // GetResolvedConanExecutablePath (not the raw ConanExecutablePath) is required here:
+            // this path gets baked as a literal string into the generated conan_install.bat below
+            // ("{conanPath}" install ...), and an empty FileName there (the "Use System Conan"
+            // case, where ConanExecutablePath is unset) would produce a broken `"" install ...`
+            // line instead of letting the OS resolve `conan` from PATH.
+            string conanPath = GlobalSettings.GetResolvedConanExecutablePath();
 
             string conanCommandContents = $@"@echo off
 setlocal enabledelayedexpansion
@@ -117,6 +154,7 @@ set performInstall=0
 
 if not exist "".conan\CONANDATA_%CONAN_BUILD_CONFIG%"" set ""performInstall=1""
 if not exist "".conan\CONANFILE_%CONAN_BUILD_CONFIG%"" set ""performInstall=1""
+if exist ""version.txt"" if not exist "".conan\VERSION_%CONAN_BUILD_CONFIG%"" set ""performInstall=1""
 
 REM Check for changes in conandata.yml and conanfile.py
 
@@ -135,6 +173,15 @@ if exist "".conan\CONANFILE_%CONAN_BUILD_CONFIG%"" (
     if errorlevel 1 (
         set performInstall=1
         echo Changes detected in conanfile.py
+    )
+)
+
+if exist ""version.txt"" if exist "".conan\VERSION_%CONAN_BUILD_CONFIG%"" (
+    echo Checking changes in version.txt
+    fc ""version.txt"" "".conan\VERSION_%CONAN_BUILD_CONFIG%"" > nul
+    if errorlevel 1 (
+        set performInstall=1
+        echo Changes detected in version.txt
     )
 )
 
@@ -171,6 +218,7 @@ if %performInstall% equ 1 (
     REM Update control files to reflect current state
     copy /Y conandata.yml .conan\CONANDATA_%CONAN_BUILD_CONFIG%
     copy /Y conanfile.py .conan\CONANFILE_%CONAN_BUILD_CONFIG%
+    if exist ""version.txt"" copy /y version.txt .conan\VERSION_%CONAN_BUILD_CONFIG%
 
     REM Display the message indicating Conan install finished
     echo ****************************************************************
@@ -191,6 +239,9 @@ echo No changes detected, skipping conan install...
             File.WriteAllText(scriptPath, conanCommandContents);
         }
 
+        /**
+         * Adds a call to `conan_install.bat` to the configuration's pre-build event command line, unless one is already present.
+         */
         private static async Task SaveConanPrebuildEventAsync(Project project, VCConfiguration vcConfig)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -211,6 +262,9 @@ echo No changes detected, skipping conan install...
             }
         }
 
+        /**
+         * (Re)generates `conan_install.bat` and wires its pre-build event into every configuration of the project. No-op if the project hasn't opted into Conan.
+         */
         public static async Task SaveConanPrebuildEventsAllConfigAsync(Project project)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -230,6 +284,552 @@ echo No changes detected, skipping conan install...
             }
         }
 
+        /**
+         * Runs `conan install` for one project/configuration right away (add a package, open a
+         * project, switch the active configuration/profile - see BuildEventsHandler and
+         * ConanPackageManagerControl for the call sites) instead of only doing it lazily from the
+         * pre-build event script during an actual Build. That pre-build script (see
+         * GenerateConanInstallScriptAsync) intentionally fails the build with "please relaunch"
+         * the first time it detects a change, precisely because Conan hadn't run yet and the
+         * generated conandeps.props wasn't wired into the project - forcing a second build. Doing
+         * the same work here, ahead of time, means that by the time the user actually clicks
+         * Build, the pre-build script finds nothing new to do and the build succeeds on the first
+         * try. The pre-build script is left in place as a safety net for configurations that
+         * weren't proactively handled (e.g. building a configuration that was never made active).
+         *
+         * @param project The project to install Conan packages for.
+         * @param vcConfig The specific build configuration to generate/install for (its Conan profile - see ConanProfilesManager.getProfileName).
+         * @param force True to run `conan install` unconditionally (an explicit install/removal/editable change from the package manager); false to skip it when nothing changed since the last successful install of this configuration (see IsConanInstallUpToDate) - the proactive calls, which would otherwise re-run Conan for every project at every solution load.
+         * @return True if `conan install` succeeded (or there was nothing to do); false if it failed - see LastConanInstallError for why.
+         */
+        public static async Task<bool> EnsureConanPackagesInstalledAsync(Project project, VCConfiguration vcConfig, bool force)
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            if (project == null || vcConfig == null || !conandataFileExists(project))
+            {
+                return true;
+            }
+
+            string projectDirectory = Path.GetDirectoryName(project.FullName);
+            string profileName = ConanProfilesManager.getProfileName(vcConfig);
+
+            // Older versions wrote "name/version@_/_", which Conan never matches to an editable package.
+            ConanFileManager.NormalizeConandataFile(projectDirectory);
+
+            // Make sure the property sheets exist (empty) BEFORE conan install, and are imported
+            // unconditionally, so IntelliSense follows them without unloading/reloading the project.
+            string propsSignatureBefore = ComputePropsSignature(projectDirectory);
+            bool propsPrepared = PrepareConanPropsFiles(project);
+            await InjectConanDepsAsync(project, vcConfig);
+
+            if (!force && !propsPrepared && IsConanInstallUpToDate(projectDirectory, profileName))
+            {
+                return true;
+            }
+
+            bool success;
+            string error;
+
+            // One `conan install` at a time, whatever triggered it: two concurrent installs (e.g. a
+            // profile/configuration event firing while the package manager runs its own) race on
+            // the same Conan cache, and the loser can leave a recipe registered without its files.
+            await _installGate.WaitAsync();
+            var cancellation = new System.Threading.CancellationTokenSource();
+            _installCancellation = cancellation;
+            try
+            {
+                await EnsureDefaultProfileAsync();
+
+                (success, error) = await RunConanInstallProcessAsync(projectDirectory, profileName, cancellation.Token);
+
+                // A recipe left half-written in the cache ("seems broken" / "conanfile.py not found")
+                // fails every later install: drop just that reference from the cache and retry once.
+                if (!success && !cancellation.IsCancellationRequested && await TryRepairBrokenRecipeAsync(error))
+                {
+                    (success, error) = await RunConanInstallProcessAsync(projectDirectory, profileName, cancellation.Token);
+                }
+            }
+            finally
+            {
+                LastConanInstallCancelled = cancellation.IsCancellationRequested;
+                _installCancellation = null;
+                cancellation.Dispose();
+                _installGate.Release();
+            }
+
+            if (!success)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[ProjectConfigurationManager] Proactive 'conan install' failed for '{project.Name}' ({profileName}): {error}");
+                LastConanInstallError = error;
+                return false;
+            }
+
+            try
+            {
+                UpdateConanControlFiles(projectDirectory, profileName);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProjectConfigurationManager] Failed to update Conan control files: {ex}");
+            }
+
+            await InjectConanDepsAsync(project, vcConfig);
+
+            // The generated property sheets changed (a dependency added/removed/made editable, first-time
+            // wiring...): IntelliSense does not follow on its own, so trigger the same thing as
+            // Project > Rescan Solution - without unloading/reloading the project.
+            if (propsPrepared || ComputePropsSignature(projectDirectory) != propsSignatureBefore)
+            {
+                _ = ThreadHelper.JoinableTaskFactory.RunAsync(() => RescanIntelliSenseAsync(project));
+            }
+
+            return true;
+        }
+
+        /**
+         * A fingerprint of every `.props` file under the project's `conan` folder, to know whether
+         * `conan install` changed the include/lib paths the project sees.
+         */
+        private static string ComputePropsSignature(string projectDirectory)
+        {
+            try
+            {
+                string folder = Path.Combine(projectDirectory, "conan");
+                if (!Directory.Exists(folder))
+                {
+                    return string.Empty;
+                }
+
+                var content = new System.Text.StringBuilder();
+                string[] files = Directory.GetFiles(folder, "*.props", SearchOption.AllDirectories);
+                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                foreach (string file in files)
+                {
+                    content.Append(file).Append('\n').Append(File.ReadAllText(file)).Append('\n');
+                }
+
+                using (var sha = System.Security.Cryptography.SHA1.Create())
+                {
+                    return Convert.ToBase64String(sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(content.ToString())));
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProjectConfigurationManager] ComputePropsSignature failed: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /**
+         * Runs Visual Studio's own "Project > Rescan Solution" (`Project.RescanSolution`) so
+         * IntelliSense re-reads the include directories. Waits a moment first: VS re-evaluates the
+         * project asynchronously after its property sheets change and a rescan issued before that
+         * still sees the old paths.
+         */
+        private static async Task RescanIntelliSenseAsync(Project project)
+        {
+            await Task.Delay(1500);
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            try
+            {
+                project.DTE.ExecuteCommand("Project.RescanSolution");
+                ConanOutputPane.Log(Loc.T("IntelliSense: solution rescan requested (Project > Rescan Solution).", "IntelliSense : réanalyse de la solution demandée (Projet > Réanalyser la solution)."));
+            }
+            catch (Exception ex)
+            {
+                ConanOutputPane.Log(Loc.T($"IntelliSense: the solution rescan failed: {ex.Message}", $"IntelliSense : la réanalyse de la solution a échoué : {ex.Message}"));
+            }
+        }
+
+        private const string EmptyPropsFile =
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n" +
+            "<Project ToolsVersion=\"4.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\" />\r\n";
+
+        /**
+         * Writes an empty `conandeps.props` (never overwriting an existing one) for the extension's
+         * own sheet (`conan\conandeps.props`) and for every `conan\<Config>\conandeps.props` the
+         * .vcxproj already imports, then turns those imports unconditional (drops the
+         * `Condition="Exists(...)"`, evaluated only once when VS loads the project, which left
+         * IntelliSense without the Conan include paths until a reload). `conan install` rewrites
+         * the files afterwards as usual.
+         *
+         * @return True if something was created or the project file was changed (first-time setup).
+         */
+        private static bool PrepareConanPropsFiles(Project project)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            bool changed = false;
+
+            try
+            {
+                string projectFile = project.FullName;
+                string projectDirectory = Path.GetDirectoryName(projectFile);
+                var propsFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    Path.Combine(projectDirectory, "conan", "conandeps.props")
+                };
+
+                string text = File.Exists(projectFile) ? File.ReadAllText(projectFile) : string.Empty;
+                var importRegex = new System.Text.RegularExpressions.Regex(
+                    @"(?<import><Import\s+Project=""conan[\x5C/](?<config>[^\x5C/""']+)[\x5C/]conandeps\.props"")\s+Condition=""[^""]*""",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                foreach (System.Text.RegularExpressions.Match match in importRegex.Matches(text))
+                {
+                    propsFiles.Add(Path.Combine(projectDirectory, "conan", match.Groups["config"].Value, "conandeps.props"));
+                }
+
+                foreach (string propsFile in propsFiles)
+                {
+                    if (!File.Exists(propsFile))
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(propsFile));
+                        File.WriteAllText(propsFile, EmptyPropsFile, new System.Text.UTF8Encoding(false));
+                        changed = true;
+                    }
+                }
+
+                // Per-configuration imports written by hand: make them unconditional now that the files exist.
+                string migrated = importRegex.Replace(text, "${import}");
+                if (migrated != text)
+                {
+                    bool bom = false;
+                    using (var stream = File.OpenRead(projectFile))
+                    {
+                        bom = stream.ReadByte() == 0xEF && stream.ReadByte() == 0xBB && stream.ReadByte() == 0xBF;
+                    }
+
+                    File.WriteAllText(projectFile, migrated, new System.Text.UTF8Encoding(bom));
+                    changed = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProjectConfigurationManager] PrepareConanPropsFiles failed: {ex}");
+            }
+
+            return changed;
+        }
+
+        private static readonly System.Threading.SemaphoreSlim _installGate = new System.Threading.SemaphoreSlim(1, 1);
+
+        /**
+         * Held by every command that writes to the Conan cache (`conan install`, `conan
+         * export-pkg`), so two of them never run at the same time.
+         */
+        internal static System.Threading.SemaphoreSlim ConanCacheGate => _installGate;
+
+        // Cancels the `conan install` currently holding _installGate (null when none is running).
+        private static volatile System.Threading.CancellationTokenSource _installCancellation;
+
+        /**
+         * Stops the `conan install` that is currently running, if any, along with every process it
+         * started (cmake, the compiler...). EnsureConanPackagesInstalledAsync then returns false
+         * with LastConanInstallCancelled set.
+         */
+        public static void CancelConanInstall()
+        {
+            try
+            {
+                _installCancellation?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // The install finished at the same moment - nothing left to cancel.
+            }
+        }
+
+        /**
+         * Whether the last EnsureConanPackagesInstalledAsync that returned false did so because
+         * the user cancelled it (CancelConanInstall) rather than because Conan failed.
+         */
+        public static bool LastConanInstallCancelled { get; private set; }
+
+        private static bool _defaultProfileChecked;
+
+        /**
+         * Every command of this extension uses `-pr:b=default`, but a freshly installed Conan has
+         * no default profile until `conan profile detect` is run once. Creates it when it is
+         * missing, so the first install works without a trip to a terminal. Checked once per
+         * session; an existing profile is never touched.
+         */
+        internal static async Task EnsureDefaultProfileAsync()
+        {
+            if (_defaultProfileChecked)
+            {
+                return;
+            }
+
+            try
+            {
+                (int exitCode, string _, string _) = await ConanRemoteHelper.RunConanAsync("profile path default", 20000);
+                if (exitCode == 0)
+                {
+                    _defaultProfileChecked = true;
+                    return;
+                }
+
+                if (exitCode == -1)
+                {
+                    return; // timed out: unknown, check again next time
+                }
+
+                ConanOutputPane.Log(Loc.T("No default Conan profile on this machine: creating it (conan profile detect).", "Aucun profil Conan par défaut sur cette machine : création (conan profile detect)."));
+                (bool created, string _) = await ConanRemoteHelper.RunConanCheckedAsync("profile detect");
+                _defaultProfileChecked = created;
+            }
+            catch (Exception ex)
+            {
+                ConanOutputPane.Log(Loc.T($"  -> exception: {ex.Message}", $"  -> exception : {ex.Message}"));
+            }
+        }
+
+        /**
+         * If a failed `conan install` reports a recipe that cannot be loaded from the cache (its
+         * folder is missing/incomplete), removes that one reference from the cache
+         * (`conan remove "<name>/<version>" -c`) so the next attempt downloads it again.
+         *
+         * @return True if a broken reference was removed and the install is worth retrying.
+         */
+        private static async Task<bool> TryRepairBrokenRecipeAsync(string error)
+        {
+            if (string.IsNullOrEmpty(error) ||
+                !(error.Contains("Cannot load recipe") || error.Contains("seems broken")))
+            {
+                return false;
+            }
+
+            System.Text.RegularExpressions.Match match = System.Text.RegularExpressions.Regex.Match(
+                error, @"Package '(?<ref>[^']+)' not resolved");
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            string reference = match.Groups["ref"].Value;
+            ConanOutputPane.Log(Loc.T($"Recipe '{reference}' is corrupted in the Conan cache: removing this reference and retrying.", $"Recette '{reference}' corrompue dans le cache Conan : suppression de cette référence puis nouvel essai."));
+
+            try
+            {
+                (int exitCode, string _, string _) = await ConanRemoteHelper.RunConanAsync($"remove \"{reference}\" -c", 60000);
+                return exitCode == 0;
+            }
+            catch (Exception ex)
+            {
+                ConanOutputPane.Log(Loc.T($"  -> exception: {ex.Message}", $"  -> exception : {ex.Message}"));
+                return false;
+            }
+        }
+
+        /**
+         * Set by EnsureConanPackagesInstalledAsync right before it returns false, so
+         * a caller that wants to surface the error (e.g. after an explicit "Install" click) can
+         * read it without needing conan install's raw process plumbing.
+         */
+        public static string LastConanInstallError { get; private set; }
+
+        /**
+         * Runs `conan install . -pr:h=<profile> -pr:b=default --build=missing` for one project
+         * directory/profile (see ConanProcessRunner.RunStreamingAsync for how it is streamed,
+         * cancelled and bounded).
+         */
+        private static Task<(bool success, string error)> RunConanInstallProcessAsync(string projectDirectory, string profileName, System.Threading.CancellationToken cancellationToken)
+        {
+            return ConanProcessRunner.RunStreamingAsync(
+                $"install . -pr:h=.conan/{profileName} -pr:b=default --build=missing", projectDirectory, cancellationToken);
+        }
+
+        /**
+         * Mirrors the bookkeeping the pre-build script (conan_install.bat) does at the end of a
+         * successful run: snapshot conandata.yml/conanfile.py/version.txt into the ".conan"
+         * folder under this configuration's key, and clear the ".runconan" marker. Doing this
+         * here too means the script's own change-detection correctly finds nothing to do the next
+         * time an actual Build triggers it for this same configuration.
+         */
+        private static void UpdateConanControlFiles(string projectDirectory, string configKey)
+        {
+            string conanFolder = Path.Combine(projectDirectory, ".conan");
+            Directory.CreateDirectory(conanFolder);
+
+            string conandataPath = Path.Combine(projectDirectory, "conandata.yml");
+            string conanfilePath = Path.Combine(projectDirectory, "conanfile.py");
+            string versionPath = Path.Combine(projectDirectory, "version.txt");
+
+            if (File.Exists(conandataPath))
+            {
+                File.Copy(conandataPath, Path.Combine(conanFolder, $"CONANDATA_{configKey}"), true);
+            }
+            if (File.Exists(conanfilePath))
+            {
+                File.Copy(conanfilePath, Path.Combine(conanFolder, $"CONANFILE_{configKey}"), true);
+            }
+            if (File.Exists(versionPath))
+            {
+                File.Copy(versionPath, Path.Combine(conanFolder, $"VERSION_{configKey}"), true);
+            }
+
+            // Not read by the pre-build script (it relies on the shared ".runconan" marker):
+            // lets IsConanInstallUpToDate tell which configuration's profile changed.
+            string profilePath = Path.Combine(conanFolder, configKey);
+            if (File.Exists(profilePath))
+            {
+                File.Copy(profilePath, Path.Combine(conanFolder, $"PROFILE_{configKey}"), true);
+            }
+
+            string runConanMarker = Path.Combine(conanFolder, ".runconan");
+            if (File.Exists(runConanMarker))
+            {
+                File.Delete(runConanMarker);
+            }
+        }
+
+        /**
+         * Whether the last successful `conan install` of this configuration is still valid, i.e.
+         * running it again would change nothing: conandata.yml, conanfile.py, version.txt and the
+         * configuration's profile are the ones snapshotted by UpdateConanControlFiles, no profile
+         * change is pending (".runconan"), and what Conan generated is still there - the property
+         * sheets, and every package folder they point to (gone after a cache clean or a
+         * `conan remove`). Any doubt or error answers false: installing once too often is harmless.
+         */
+        private static bool IsConanInstallUpToDate(string projectDirectory, string configKey)
+        {
+            try
+            {
+                string conanFolder = Path.Combine(projectDirectory, ".conan");
+                if (File.Exists(Path.Combine(conanFolder, ".runconan")))
+                {
+                    return false;
+                }
+
+                if (!SameContent(Path.Combine(projectDirectory, "conandata.yml"), Path.Combine(conanFolder, $"CONANDATA_{configKey}")) ||
+                    !SameContent(Path.Combine(projectDirectory, "conanfile.py"), Path.Combine(conanFolder, $"CONANFILE_{configKey}")) ||
+                    !SameContent(Path.Combine(conanFolder, configKey), Path.Combine(conanFolder, $"PROFILE_{configKey}")))
+                {
+                    return false;
+                }
+
+                string versionPath = Path.Combine(projectDirectory, "version.txt");
+                if (File.Exists(versionPath) && !SameContent(versionPath, Path.Combine(conanFolder, $"VERSION_{configKey}")))
+                {
+                    return false;
+                }
+
+                string generatorsFolder = Path.Combine(projectDirectory, "conan");
+                string conandeps = Path.Combine(generatorsFolder, "conandeps.props");
+                if (!File.Exists(conandeps) || File.ReadAllText(conandeps) == EmptyPropsFile)
+                {
+                    return false;
+                }
+
+                var rootFolderRegex = new System.Text.RegularExpressions.Regex(@"<Conan\w*RootFolder>(?<path>[^<]+)</Conan\w*RootFolder>");
+                foreach (string propsFile in Directory.GetFiles(generatorsFolder, "*.props", SearchOption.AllDirectories))
+                {
+                    foreach (System.Text.RegularExpressions.Match match in rootFolderRegex.Matches(File.ReadAllText(propsFile)))
+                    {
+                        if (!Directory.Exists(match.Groups["path"].Value.Trim()))
+                        {
+                            return false;
+                        }
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProjectConfigurationManager] IsConanInstallUpToDate failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        /**
+         * Whether both files exist and hold the same bytes.
+         */
+        private static bool SameContent(string path, string snapshotPath)
+        {
+            if (!File.Exists(path) || !File.Exists(snapshotPath))
+            {
+                return false;
+            }
+
+            byte[] content = File.ReadAllBytes(path);
+            byte[] snapshot = File.ReadAllBytes(snapshotPath);
+            if (content.Length != snapshot.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < content.Length; i++)
+            {
+                if (content[i] != snapshot[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /**
+         * Flattens every project in the solution (recursing into solution folders), used to
+         * proactively run Conan installs for every Conan-enabled project when the solution opens.
+         */
+        public static List<Project> GetAllProjectsFlat(DTE dte)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            var result = new List<Project>();
+            if (dte?.Solution?.Projects == null)
+            {
+                return result;
+            }
+
+            foreach (Project project in dte.Solution.Projects)
+            {
+                CollectProjectsRecursive(project, result);
+            }
+
+            return result;
+        }
+
+        /**
+         * Recursion helper for GetAllProjectsFlat: adds project to result, or recurses into its children if it's a solution folder.
+         */
+        private static void CollectProjectsRecursive(Project project, List<Project> result)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            if (project == null)
+            {
+                return;
+            }
+
+            if (project.Kind == EnvDTE.Constants.vsProjectKindSolutionItems)
+            {
+                if (project.ProjectItems != null)
+                {
+                    foreach (ProjectItem item in project.ProjectItems)
+                    {
+                        if (item.SubProject != null)
+                        {
+                            CollectProjectsRecursive(item.SubProject, result);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                result.Add(project);
+            }
+        }
+
+        /**
+         * Finds the VCConfiguration matching the project's currently active configuration/platform (the toolbar dropdowns), if any.
+         */
         public static VCConfiguration GetActiveVCConfiguration(Project project)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -256,6 +856,11 @@ echo No changes detected, skipping conan install...
             return null;
         }
 
+        /**
+         * Resolves the solution's configured startup project (Solution Properties > Startup Project), searching recursively through solution folders.
+         *
+         * @return The startup project, or null if none is set or it can't be found.
+         */
         public static Project GetStartupProject(DTE dte)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -282,7 +887,9 @@ echo No changes detected, skipping conan install...
             return null; // No startup project found
         }
 
-        // Helper function to find the project by name recursively
+        /**
+         * Recursion helper: returns project (or one of its children, if it's a solution folder) whose `UniqueName` matches projectName.
+         */
         private static Project FindProjectByNameRecursive(Project project, string projectName)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -310,6 +917,9 @@ echo No changes detected, skipping conan install...
             return null;
         }
 
+        /**
+         * Finds a project anywhere in the solution (including inside solution folders) by its `UniqueName`.
+         */
         public static Project GetProjectByName(DTE dte, string name)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -326,6 +936,9 @@ echo No changes detected, skipping conan install...
             return null;
         }
 
+        /**
+         * Finds the VCConfiguration matching a given configuration name/platform pair (as reported by EnvDTE build events, e.g. "Debug"/"x64").
+         */
         public static VCConfiguration GetVCConfig(Project project, string ProjectConfig, string Platform)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
