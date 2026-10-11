@@ -54,7 +54,7 @@ namespace conan_vs_extension
             }
             catch (Exception ex)
             {
-                ConanOutputPane.Log($"conan editable list : exception : {ex.Message}");
+                ConanOutputPane.Log(Loc.T($"conan editable list: exception: {ex.Message}", $"conan editable list : exception : {ex.Message}"));
             }
 
             return editables;
@@ -83,7 +83,7 @@ namespace conan_vs_extension
 
             if (!File.Exists(Path.Combine(folder, "conanfile.py")) && !File.Exists(Path.Combine(folder, "conanfile.txt")))
             {
-                return Task.FromResult((false, $"Aucun conanfile.py trouvé dans '{folder}'."));
+                return Task.FromResult((false, Loc.T($"No conanfile.py found in '{folder}'.", $"Aucun conanfile.py trouvé dans '{folder}'.")));
             }
 
             return AddAfterCleaningLegacyAsync(name, version, userChannel, folder);

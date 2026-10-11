@@ -189,12 +189,18 @@ namespace conan_vs_extension
 
             string nl = Environment.NewLine + Environment.NewLine;
             string message = notInstalled
-                ? $"Le projet « {projectName} » utilise le toolset {toolset}, qui ne semble pas installé avec cette version de Visual Studio.{nl}" +
-                  $"Conan utilisera compiler.version={compilerVersion} d'après le mappage du toolset, et la compilation des paquets risque d'échouer.{nl}" +
-                  "Installez ce toolset (Visual Studio Installer) ou changez le « Jeu d'outils de plateforme » du projet."
-                : $"Le projet « {projectName} » utilise le toolset {toolset} (MSVC {vcToolsVersion}), alors que cette version de Visual Studio fournit {defaultToolset} par défaut.{nl}" +
-                  $"Conan utilisera compiler.version={compilerVersion} pour ce projet : les binaires des paquets doivent correspondre à ce compilateur.{nl}" +
-                  $"Pour utiliser {defaultToolset}, changez le « Jeu d'outils de plateforme » dans les propriétés du projet.";
+                ? Loc.T($"The project \"{projectName}\" uses the {toolset} toolset, which does not seem to be installed with this version of Visual Studio.{nl}" +
+                        $"Conan will use compiler.version={compilerVersion} from the toolset mapping, and building packages may fail.{nl}" +
+                        "Install this toolset (Visual Studio Installer) or change the project's \"Platform Toolset\".",
+                        $"Le projet « {projectName} » utilise le toolset {toolset}, qui ne semble pas installé avec cette version de Visual Studio.{nl}" +
+                        $"Conan utilisera compiler.version={compilerVersion} d'après le mappage du toolset, et la compilation des paquets risque d'échouer.{nl}" +
+                        "Installez ce toolset (Visual Studio Installer) ou changez le « Jeu d'outils de plateforme » du projet.")
+                : Loc.T($"The project \"{projectName}\" uses the {toolset} toolset (MSVC {vcToolsVersion}), while this version of Visual Studio provides {defaultToolset} by default.{nl}" +
+                        $"Conan will use compiler.version={compilerVersion} for this project: package binaries must match this compiler.{nl}" +
+                        $"To use {defaultToolset}, change the \"Platform Toolset\" in the project properties.",
+                        $"Le projet « {projectName} » utilise le toolset {toolset} (MSVC {vcToolsVersion}), alors que cette version de Visual Studio fournit {defaultToolset} par défaut.{nl}" +
+                        $"Conan utilisera compiler.version={compilerVersion} pour ce projet : les binaires des paquets doivent correspondre à ce compilateur.{nl}" +
+                        $"Pour utiliser {defaultToolset}, changez le « Jeu d'outils de plateforme » dans les propriétés du projet.");
 
             ConanOutputPane.Log(message.Replace(nl, " "));
 
@@ -312,7 +318,7 @@ os=Windows
                         if (configErrors.Count > 0)
                         {
                             MessageBox.Show(
-                                "There was a problem generating the Conan profile(s) for:" + Environment.NewLine +
+                                Loc.T("There was a problem generating the Conan profile(s) for:", "Un problème est survenu lors de la génération des profils Conan pour :") + Environment.NewLine +
                                 string.Join(Environment.NewLine, configErrors),
                                 "Error - Conan C/C++ Package Manager",
                                 MessageBoxButton.OK,
@@ -324,7 +330,7 @@ os=Windows
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"There was a problem generating the file: {ex.Message}", "Error - Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(Loc.T($"There was a problem generating the file: {ex.Message}", $"Un problème est survenu lors de la génération du fichier : {ex.Message}"), "Error - Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

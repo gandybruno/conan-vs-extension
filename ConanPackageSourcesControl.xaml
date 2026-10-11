@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:conan_vs_extension"
              xmlns:vsshell="clr-namespace:Microsoft.VisualStudio.Shell;assembly=Microsoft.VisualStudio.Shell.15.0"
              Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"
              Foreground="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"
@@ -63,7 +64,7 @@
             </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,10" Opacity="0.8"
-                   Text="Remotes Conan configurés sur cette machine (identique à 'conan remote list'). Ajouter/supprimer/modifier/activer un remote ici revient à exécuter 'conan remote add/remove/update/enable/disable' - la liste des sources du gestionnaire de packages Conan (Parcourir) en dépend directement."/>
+                   Text="{local:Loc 'Conan remotes configured on this machine (same as \'conan remote list\'). Adding/removing/editing/enabling a remote here is the same as running \'conan remote add/remove/update/enable/disable\' - the source list of the Conan package manager (Browse) depends directly on it.', 'Remotes Conan configurés sur cette machine (identique à \'conan remote list\'). Ajouter/supprimer/modifier/activer un remote ici revient à exécuter \'conan remote add/remove/update/enable/disable\' - la liste des sources du gestionnaire de packages Conan (Parcourir) en dépend directement.'}"/>
 
         <DataGrid x:Name="RemotesDataGrid" Grid.Row="1"
                   AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
@@ -100,24 +101,24 @@
                 </Style>
             </DataGrid.CellStyle>
             <DataGrid.Columns>
-                <DataGridCheckBoxColumn Header="Activé" Binding="{Binding Enabled, Mode=OneWay}" Width="60"/>
-                <DataGridTextColumn Header="Nom" Binding="{Binding Name, Mode=OneWay}" Width="130"/>
-                <DataGridTextColumn Header="Source (URL)" Binding="{Binding Url, Mode=OneWay}" Width="*"/>
-                <DataGridTextColumn Header="Utilisateur" Binding="{Binding User, Mode=OneWay, TargetNullValue='(anonyme)'}" Width="110"/>
+                <DataGridCheckBoxColumn Header="{local:Loc 'Enabled', 'Activé'}" Binding="{Binding Enabled, Mode=OneWay}" Width="60"/>
+                <DataGridTextColumn Header="{local:Loc 'Name', 'Nom'}" Binding="{Binding Name, Mode=OneWay}" Width="130"/>
+                <DataGridTextColumn Header="{local:Loc 'Source (URL)', 'Source (URL)'}" Binding="{Binding Url, Mode=OneWay}" Width="*"/>
+                <DataGridTextColumn Header="{local:Loc 'User', 'Utilisateur'}" Binding="{Binding User, Mode=OneWay, TargetNullValue={local:Loc '(anonymous)', '(anonyme)'}}" Width="110"/>
                 <DataGridCheckBoxColumn Header="SSL" Binding="{Binding VerifySsl, Mode=OneWay}" Width="50"/>
             </DataGrid.Columns>
         </DataGrid>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-            <Button x:Name="AddButton" Content="Ajouter un remote..." Click="AddButton_Click"
+            <Button x:Name="AddButton" Content="{local:Loc 'Add a remote...', 'Ajouter un remote...'}" Click="AddButton_Click"
                     Padding="12,4" Margin="0,0,16,0" Style="{StaticResource ThemedButtonStyle}"/>
-            <Button x:Name="LoginButton" Content="Se connecter..." IsEnabled="False" Click="LoginButton_Click"
+            <Button x:Name="LoginButton" Content="{local:Loc 'Log in...', 'Se connecter...'}" IsEnabled="False" Click="LoginButton_Click"
                     Padding="12,4" Margin="0,0,8,0" Style="{StaticResource ThemedButtonStyle}"/>
-            <Button x:Name="EnableDisableButton" Content="Désactiver" IsEnabled="False" Click="EnableDisableButton_Click"
+            <Button x:Name="EnableDisableButton" Content="{local:Loc 'Disable', 'Désactiver'}" IsEnabled="False" Click="EnableDisableButton_Click"
                     Padding="12,4" Margin="0,0,8,0" Style="{StaticResource ThemedButtonStyle}"/>
-            <Button x:Name="EditSourceButton" Content="Modifier la source..." IsEnabled="False" Click="EditSourceButton_Click"
+            <Button x:Name="EditSourceButton" Content="{local:Loc 'Edit source...', 'Modifier la source...'}" IsEnabled="False" Click="EditSourceButton_Click"
                     Padding="12,4" Margin="0,0,8,0" Style="{StaticResource ThemedButtonStyle}"/>
-            <Button x:Name="RemoveButton" Content="Supprimer" IsEnabled="False" Click="RemoveButton_Click"
+            <Button x:Name="RemoveButton" Content="{local:Loc 'Remove', 'Supprimer'}" IsEnabled="False" Click="RemoveButton_Click"
                     Padding="12,4" Style="{StaticResource ThemedButtonStyle}"/>
         </StackPanel>
 
@@ -127,8 +128,8 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center" Opacity="0.8"
-                       Text="Cache local Conan : paquets et binaires déjà téléchargés ou compilés, partagés par tous les projets. Les paquets éditables ne sont pas touchés."/>
-            <Button x:Name="CleanCacheButton" Grid.Column="1" Content="Nettoyer le cache..." Click="CleanCacheButton_Click"
+                       Text="{local:Loc 'Local Conan cache: packages and binaries already downloaded or built, shared by all projects. Editable packages are not touched.', 'Cache local Conan : paquets et binaires déjà téléchargés ou compilés, partagés par tous les projets. Les paquets éditables ne sont pas touchés.'}"/>
+            <Button x:Name="CleanCacheButton" Grid.Column="1" Content="{local:Loc 'Clean cache...', 'Nettoyer le cache...'}" Click="CleanCacheButton_Click"
                     Padding="12,4" Margin="12,0,0,0" Style="{StaticResource ThemedButtonStyle}"/>
         </Grid>
     </Grid>
