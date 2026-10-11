@@ -76,10 +76,46 @@ namespace conan_vs_extension
 
                 if (result?.requirements != null)
                 {
-                    return result.requirements;
+                    return result.requirements.Select(NormalizeReference).ToArray();
                 }
             }
             return new string[] { };
+        }
+
+        /**
+         * Drops the "@_/_" (user "_", channel "_") suffix from a recipe reference. Conan 2 does not
+         * treat "name/1.0@_/_" as equal to "name/1.0" (no user/channel), so keeping it makes Conan
+         * ignore editable packages registered under the plain reference. A real user/channel
+         * ("name/1.0@user/channel") is kept as is.
+         */
+        public static string NormalizeReference(string reference)
+        {
+            if (string.IsNullOrEmpty(reference))
+            {
+                return reference;
+            }
+
+            return System.Text.RegularExpressions.Regex.Replace(reference.Trim(), @"@_/_(?![\w.\-])", string.Empty);
+        }
+
+        /**
+         * Rewrites a guarded `conandata.yml` that still holds "@_/_" references (written by older
+         * versions of the extension) in their plain "name/version" form. No-ops otherwise.
+         */
+        public static void NormalizeConandataFile(string projectDirectory)
+        {
+            string path = Path.Combine(projectDirectory, "conandata.yml");
+            if (!File.Exists(path) || !IsFileCommentGuarded(path))
+            {
+                return;
+            }
+
+            string text = File.ReadAllText(path);
+            string normalized = System.Text.RegularExpressions.Regex.Replace(text, @"@_/_(?![\w.\-])", string.Empty);
+            if (normalized != text)
+            {
+                File.WriteAllText(path, normalized);
+            }
         }
 
         /**
@@ -113,7 +149,7 @@ namespace conan_vs_extension
                         "    def requirements(self):",
                         "        requirements = self.conan_data.get('requirements', [])",
                         "        for requirement in requirements:",
-                        "            self.requires(requirement)"
+                        "            self.requires(requirement.replace('@_/_', ''))"
                     })
                 );
 
@@ -160,6 +196,7 @@ namespace conan_vs_extension
             if (IsFileCommentGuarded(path))
             {
                 string[] requirements = GetConandataRequirements(projectDirectory);
+                newRequirement = NormalizeReference(newRequirement);
                 string libraryName = newRequirement.Split('/')[0];
 
                 // A conanfile.py can only require one version/channel of a given library at a time

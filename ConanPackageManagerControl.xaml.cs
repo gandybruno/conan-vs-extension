@@ -111,6 +111,7 @@ namespace conan_vs_extension
                 if ((bool)e.NewValue)
                 {
                     _ = ThreadHelper.JoinableTaskFactory.RunAsync(RefreshSourcesIfChangedAsync);
+                    _ = ThreadHelper.JoinableTaskFactory.RunAsync(RefreshEditableMarkersAsync);
                 }
             };
 
@@ -384,6 +385,21 @@ namespace conan_vs_extension
             // to wait on a "Parcourir" remote fetch, however slow or stuck that might be.
             UpdateLoadingOverlayVisibility();
             FilterListView(LibrarySearchComboBox.Text);
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(RefreshEditableMarkersAsync);
+        }
+
+        /**
+         * Re-reads `conan editable list` and refreshes the editable markers of the package list.
+         */
+        private async Task RefreshEditableMarkersAsync()
+        {
+            Dictionary<string, string> editables = await ConanEditableHelper.ListEditablesAsync();
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            if (IsSupportedProject())
+            {
+                ApplyEditableMarkers(editables);
+            }
         }
 
         /**
@@ -423,40 +439,44 @@ namespace conan_vs_extension
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            if (_jsonData == null || _jsonData.Libraries == null) return;
-
-            PackagesListBox.Items.Clear();
-
             bool supported = IsSupportedProject();
             UnsupportedProjectType.Visibility = supported ? Visibility.Collapsed : Visibility.Visible;
 
-            var filteredLibraries = _jsonData.Libraries
-                .Where(kv => kv.Key.IndexOf(searchText ?? string.Empty, StringComparison.OrdinalIgnoreCase) >= 0)
-                .ToList();
+            string filter = searchText ?? string.Empty;
+            PackageSubtitleConverter.ShowInstalledVersions = _currentTab == PackageTab.Installed;
 
             if (_currentTab == PackageTab.Installed)
             {
+                // The project's own dependencies, straight from conandata.yml: a package must show up
+                // here even when no remote knows it (local, editable, other source...).
+                PackagesListBox.Items.Clear();
+                PackageSubtitleConverter.InstalledVersions.Clear();
+
                 if (supported)
                 {
-                    string projectDirectory = GetProjectDirectory();
-                    var requirements = ConanFileManager.GetConandataRequirements(projectDirectory);
-                    foreach (var requirement in requirements)
+                    foreach (string requirement in ConanFileManager.GetConandataRequirements(GetProjectDirectory()))
                     {
-                        string key = requirement.Split('/')[0];
-                        if (filteredLibraries.Any(library => library.Key == key))
+                        int slash = requirement.IndexOf('/');
+                        string name = slash > 0 ? requirement.Substring(0, slash) : requirement;
+                        if (name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0 || PackagesListBox.Items.Contains(name))
                         {
-                            PackagesListBox.Items.Add(key);
+                            continue;
                         }
+
+                        PackageSubtitleConverter.InstalledVersions[name] = slash > 0 ? requirement.Substring(slash + 1) : string.Empty;
+                        PackagesListBox.Items.Add(name);
                     }
                 }
                 // else: nothing to show - the UnsupportedProjectType banner already explains why.
+                return;
             }
-            else
+
+            if (_jsonData == null || _jsonData.Libraries == null) return;
+
+            PackagesListBox.Items.Clear();
+            foreach (var library in _jsonData.Libraries.Where(kv => kv.Key.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0))
             {
-                foreach (var library in filteredLibraries)
-                {
-                    PackagesListBox.Items.Add(library.Key);
-                }
+                PackagesListBox.Items.Add(library.Key);
             }
         }
 
@@ -489,10 +509,15 @@ namespace conan_vs_extension
         private void UpdateLibraryInfo(string name)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            if (_jsonData != null && _jsonData.Libraries.ContainsKey(name))
+            if (_jsonData != null && _jsonData.Libraries != null && _jsonData.Libraries.ContainsKey(name))
             {
-                var library = _jsonData.Libraries[name];
-                UpdatePanel(name, library.Versions);
+                UpdatePanel(name, _jsonData.Libraries[name].Versions);
+            }
+            else if (PackageSubtitleConverter.InstalledVersions.TryGetValue(name, out string installedVersion))
+            {
+                // Required by the project but not offered by the selected source (local/editable
+                // package, other remote...): show it with just its installed version.
+                UpdatePanel(name, new List<string> { installedVersion });
             }
         }
 
@@ -534,6 +559,176 @@ namespace conan_vs_extension
             InstalledStatusTextBlock.Text = isInstalled
                 ? $"Installé : {installedRequirement.Substring(name.Length + 1)}"
                 : "Non installé dans ce projet.";
+
+            EditableCheckBox.Visibility = isInstalled ? Visibility.Visible : Visibility.Collapsed;
+            EditableFolderButton.Visibility = Visibility.Collapsed;
+            if (isInstalled)
+            {
+                _ = RefreshEditableStateAsync(name, installedRequirement);
+            }
+        }
+
+        /**
+         * Reads `conan editable list` (so the state is always current - it is global to the Conan
+         * home, not per project) and reflects it on the details panel: checkbox, folder button and
+         * the folder in the status line. Also refreshes the editable markers of the package list.
+         */
+        private async Task RefreshEditableStateAsync(string name, string requirement)
+        {
+            Dictionary<string, string> editables = await ConanEditableHelper.ListEditablesAsync();
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            ApplyEditableMarkers(editables);
+
+            if (!(LibraryNameLabel.Content is string current) || current != name)
+            {
+                return; // another package was selected in the meantime
+            }
+
+            string version = requirement.Substring(name.Length + 1);
+            bool editable = editables.TryGetValue(requirement, out string path);
+            EditableCheckBox.IsChecked = editable;
+            EditableFolderButton.Visibility = editable ? Visibility.Visible : Visibility.Collapsed;
+            InstalledStatusTextBlock.Text = editable
+                ? $"Installé : {version} - éditable : {path}"
+                : $"Installé : {version}";
+        }
+
+        /**
+         * Updates the "editable" marker shown under package names in the list, re-rendering the
+         * list only when the set of editable packages actually changed.
+         */
+        private void ApplyEditableMarkers(Dictionary<string, string> editables)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string requirement in ConanFileManager.GetConandataRequirements(GetProjectDirectory()))
+            {
+                int slash = requirement.IndexOf('/');
+                if (slash > 0 && editables.ContainsKey(requirement))
+                {
+                    names.Add(requirement.Substring(0, slash));
+                }
+            }
+
+            if (!names.SetEquals(PackageSubtitleConverter.Editable))
+            {
+                PackageSubtitleConverter.Editable = names;
+                object selected = PackagesListBox.SelectedItem;
+                FilterListView(LibrarySearchComboBox.Text);
+                if (selected != null && PackagesListBox.Items.Contains(selected))
+                {
+                    PackagesListBox.SelectedItem = selected;
+                }
+            }
+        }
+
+        private void EditableCheckBox_Click(object sender, RoutedEventArgs e)
+        {
+            bool enable = EditableCheckBox.IsChecked == true;
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(() => SetEditableAsync(enable, askFolder: enable));
+        }
+
+        private void EditableFolderButton_Click(object sender, RoutedEventArgs e)
+        {
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(() => SetEditableAsync(true, askFolder: true));
+        }
+
+        /**
+         * Enables (asking for the folder holding the library's conanfile.py, `conan editable add`)
+         * or disables (`conan editable remove`) editable mode for the selected package, then re-runs
+         * `conan install` so the project immediately uses - or stops using - the local sources.
+         */
+        private async Task SetEditableAsync(bool enable, bool askFolder)
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            if (!(LibraryNameLabel.Content is string selectedLibrary))
+            {
+                return;
+            }
+
+            string requirement = ConanFileManager.GetConandataRequirements(GetProjectDirectory())
+                .FirstOrDefault(r => r.StartsWith(selectedLibrary + "/"));
+            if (requirement == null)
+            {
+                return;
+            }
+
+            string version = requirement.Substring(selectedLibrary.Length + 1);
+            string folder = null;
+
+            if (enable && askFolder)
+            {
+                using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
+                {
+                    dialog.Description = $"Dossier contenant le conanfile.py de {selectedLibrary} (sources à modifier/déboguer)";
+                    dialog.ShowNewFolderButton = false;
+                    if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                    {
+                        await RefreshEditableStateAsync(selectedLibrary, requirement);
+                        return;
+                    }
+
+                    folder = dialog.SelectedPath;
+                }
+            }
+
+            InstallButton.IsEnabled = false;
+            RemoveButton.IsEnabled = false;
+            EditableCheckBox.IsEnabled = false;
+            EditableFolderButton.IsEnabled = false;
+            InstallOperationStatusText.Text = enable
+                ? $"Passage de {requirement} en mode éditable en cours..."
+                : $"Retour de {requirement} au paquet du cache en cours...";
+            InstallOperationOverlay.Visibility = Visibility.Visible;
+            try
+            {
+                (bool success, string error) = enable
+                    ? await ConanEditableHelper.AddEditableAsync(folder, selectedLibrary, version)
+                    : await ConanEditableHelper.RemoveEditableAsync(selectedLibrary, version);
+
+                if (!success)
+                {
+                    MessageBox.Show(
+                        enable ? $"Impossible de passer {requirement} en mode éditable :\n{error}"
+                               : $"Impossible de quitter le mode éditable de {requirement} :\n{error}",
+                        "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                VCConfiguration activeConfig = ProjectConfigurationManager.GetActiveVCConfiguration(_project);
+
+                bool installed = false;
+                await ConanInstallTracker.Track(_project.FullName, async () =>
+                {
+                    installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, showErrors: true);
+                }).JoinAsync();
+
+                if (!installed)
+                {
+                    MessageBox.Show(
+                        $"Le mode éditable de {requirement} a été modifié, mais 'conan install' a échoué :\n{ProjectConfigurationManager.LastConanInstallError}\n\n" +
+                        "Une recette éditable doit définir layout() et ses fichiers générés (conan install/build dans son dossier) doivent exister.",
+                        "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                ConanOutputPane.Log($"Mode éditable de {requirement} : exception inattendue : {ex}");
+                MessageBox.Show($"Une erreur inattendue est survenue :\n{ex.Message}",
+                    "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                InstallOperationOverlay.Visibility = Visibility.Collapsed;
+                InstallButton.IsEnabled = true;
+                RemoveButton.IsEnabled = true;
+                EditableCheckBox.IsEnabled = true;
+                EditableFolderButton.IsEnabled = true;
+            }
+
+            await RefreshEditableStateAsync(selectedLibrary, requirement);
         }
 
         /**
@@ -573,6 +768,8 @@ namespace conan_vs_extension
                 MetadataLoadingTextBlock.Visibility = Visibility.Collapsed;
                 return;
             }
+
+            _ = RefreshCompatibilityAsync(name, version, source.RemoteName);
 
             ConanRemoteHelper.RecipeMetadata metadata =
                 await ConanRemoteHelper.GetRecipeMetadataAsync(name, version, source.RemoteName);
@@ -625,6 +822,106 @@ namespace conan_vs_extension
             {
                 PackageHomepageHyperlink.NavigateUri = homepageUri;
                 PackageHomepageLine.Visibility = Visibility.Visible;
+            }
+        }
+
+        private int _compatibilityRequestId;
+
+        /**
+         * Checks, for the selected package/version, whether the project's profile (compiler.version,
+         * build type, runtime...) can use it (`conan graph info`) and lists the binaries the source
+         * publishes for it. An incompatible package cannot be installed: the Install button is
+         * disabled and the reason is shown. Anything Conan cannot tell never blocks the install.
+         */
+        private async Task RefreshCompatibilityAsync(string name, string version, string remoteName)
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            int requestId = ++_compatibilityRequestId;
+
+            if (!IsSupportedProject())
+            {
+                CompatibilityTextBlock.Visibility = Visibility.Collapsed;
+                BinariesTextBlock.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            string projectDirectory = GetProjectDirectory();
+            string profileName = "default";
+            VCConfiguration activeConfig = ProjectConfigurationManager.GetActiveVCConfiguration(_project);
+            if (activeConfig != null)
+            {
+                profileName = ConanProfilesManager.getProfileName(activeConfig);
+            }
+
+            CompatibilityTextBlock.Text = "Vérification de la compatibilité avec le projet...";
+            CompatibilityTextBlock.Visibility = Visibility.Visible;
+            BinariesTextBlock.Visibility = Visibility.Collapsed;
+            InstallButton.IsEnabled = false;
+
+            Task<ConanCompatibilityHelper.CompatibilityResult> check =
+                ConanCompatibilityHelper.CheckAsync(name, version, remoteName, projectDirectory, profileName);
+            Task<List<string>> binaries = ConanCompatibilityHelper.ListBinariesAsync(name, version, remoteName);
+
+            ConanCompatibilityHelper.CompatibilityResult result = await check;
+            List<string> available = await binaries;
+
+            // No matching binary: the package has to be compiled, which needs sources.
+            ConanRemoteHelper.RecipeSourceKind sourceKind = ConanRemoteHelper.RecipeSourceKind.Unknown;
+            if (result.State == ConanCompatibilityHelper.CompatibilityState.WillBuild)
+            {
+                sourceKind = await ConanRemoteHelper.GetRecipeSourceKindAsync(name, version, remoteName);
+                if (sourceKind == ConanRemoteHelper.RecipeSourceKind.None)
+                {
+                    result.State = ConanCompatibilityHelper.CompatibilityState.Incompatible;
+                    result.Reason = "aucun binaire n'existe pour ce profil et la recette n'a pas de sources " +
+                                    "(ni exports_sources, ni source()) : la compilation est impossible.";
+                }
+            }
+
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            if (requestId != _compatibilityRequestId)
+            {
+                return; // another package/version was selected meanwhile
+            }
+
+            string profile = string.IsNullOrEmpty(result.Profile) ? string.Empty : $" ({result.Profile})";
+            switch (result.State)
+            {
+                case ConanCompatibilityHelper.CompatibilityState.PrebuiltAvailable:
+                    CompatibilityTextBlock.Text = $"✔ Un binaire correspond à ce projet{profile}.";
+                    break;
+                case ConanCompatibilityHelper.CompatibilityState.WillBuild:
+                    CompatibilityTextBlock.Text = sourceKind == ConanRemoteHelper.RecipeSourceKind.Downloaded
+                        ? $"⚠ Aucun binaire précompilé pour ce projet{profile} : la bibliothèque sera compilée ; la recette télécharge ses sources depuis internet (accès réseau nécessaire)."
+                        : sourceKind == ConanRemoteHelper.RecipeSourceKind.Exported
+                            ? $"⚠ Aucun binaire précompilé pour ce projet{profile} : la bibliothèque sera compilée à partir des sources incluses dans le paquet."
+                            : $"⚠ Aucun binaire précompilé pour ce projet{profile} : la bibliothèque sera compilée depuis les sources.";
+                    break;
+                case ConanCompatibilityHelper.CompatibilityState.Incompatible:
+                    CompatibilityTextBlock.Text = $"⛔ Incompatible avec ce projet{profile} : {result.Reason}";
+                    break;
+                default:
+                    CompatibilityTextBlock.Text = string.IsNullOrEmpty(result.Reason)
+                        ? "Compatibilité non vérifiable."
+                        : $"Compatibilité non vérifiable : {result.Reason}";
+                    break;
+            }
+
+            InstallButton.IsEnabled = result.State != ConanCompatibilityHelper.CompatibilityState.Incompatible;
+            InstallButton.ToolTip = InstallButton.IsEnabled ? null : "Installation impossible : paquet incompatible avec ce projet.";
+
+            if (available == null)
+            {
+                BinariesTextBlock.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                BinariesTextBlock.Text = available.Count == 0
+                    ? $"Aucun binaire précompilé publié sur « {remoteName} » pour cette version."
+                    : $"Binaires publiés sur « {remoteName} » :{Environment.NewLine}" +
+                      string.Join(Environment.NewLine, available.Take(12).Select(line => "  • " + line)) +
+                      (available.Count > 12 ? $"{Environment.NewLine}  … (+{available.Count - 12})" : string.Empty);
+                BinariesTextBlock.Visibility = Visibility.Visible;
             }
         }
 
@@ -809,7 +1106,7 @@ namespace conan_vs_extension
 
             InstallButton.IsEnabled = false;
             RemoveButton.IsEnabled = false;
-            InstallOperationStatusText.Text = $"Suppression de {installedRequirement} en cours...";
+            InstallOperationStatusText.Text = $"Retrait de {installedRequirement} du projet en cours...";
             InstallOperationOverlay.Visibility = Visibility.Visible;
             try
             {
@@ -824,7 +1121,7 @@ namespace conan_vs_extension
                 if (!installed)
                 {
                     MessageBox.Show(
-                        $"{installedRequirement} a été retiré de conandata.yml, mais 'conan install' a échoué :\n{ProjectConfigurationManager.LastConanInstallError}\n\nLe prochain Build réessaiera automatiquement.",
+                        $"{installedRequirement} a été retiré du projet (conandata.yml), mais 'conan install' a échoué :\n{ProjectConfigurationManager.LastConanInstallError}\n\nLe prochain Build réessaiera automatiquement.",
                         "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
@@ -833,9 +1130,9 @@ namespace conan_vs_extension
                 // This method is an async void event handler - an exception left to propagate out
                 // of it (e.g. an unexpected VCProject COM failure) would not be catchable by any
                 // caller and can destabilize/crash Visual Studio instead of just this operation.
-                ConanOutputPane.Log($"Suppression de {installedRequirement} : exception inattendue : {ex}");
+                ConanOutputPane.Log($"Retrait de {installedRequirement} : exception inattendue : {ex}");
                 MessageBox.Show(
-                    $"Une erreur inattendue est survenue pendant la suppression de {installedRequirement} :\n{ex.Message}",
+                    $"Une erreur inattendue est survenue pendant le retrait de {installedRequirement} :\n{ex.Message}",
                     "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
@@ -1137,7 +1434,7 @@ namespace conan_vs_extension
                 if (match.Success)
                 {
                     string libName = match.Groups[1].Value;
-                    string version = match.Groups[2].Value;
+                    string version = ConanFileManager.NormalizeReference(match.Groups[2].Value);
                     if (!libraries.ContainsKey(libName))
                     {
                         libraries[libName] = new HashSet<string>();
@@ -1185,5 +1482,40 @@ namespace conan_vs_extension
             _ = UpdateJsonDataAsync(true);
         }
 
+    }
+
+    /**
+     * Subtitle shown under each package name in the list: the installed version (Installed tab)
+     * and an editable marker. State is pushed here by ConanPackageManagerControl, then the list
+     * is re-rendered.
+     */
+    public sealed class PackageSubtitleConverter : System.Windows.Data.IValueConverter
+    {
+        public static HashSet<string> Editable { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        public static Dictionary<string, string> InstalledVersions { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public static bool ShowInstalledVersions { get; set; }
+
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            string name = value as string ?? string.Empty;
+            string text = "Package Conan";
+
+            if (ShowInstalledVersions && InstalledVersions.TryGetValue(name, out string version) && !string.IsNullOrEmpty(version))
+            {
+                text += " - " + version;
+            }
+
+            if (Editable.Contains(name))
+            {
+                text += " ✎ éditable";
+            }
+
+            return text;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

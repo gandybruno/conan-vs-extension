@@ -319,7 +319,37 @@ echo No changes detected, skipping conan install...
             string projectDirectory = Path.GetDirectoryName(project.FullName);
             string profileName = ConanProfilesManager.getProfileName(vcConfig);
 
-            (bool success, string error) = await RunConanInstallProcessAsync(projectDirectory, profileName);
+            // Older versions wrote "name/version@_/_", which Conan never matches to an editable package.
+            ConanFileManager.NormalizeConandataFile(projectDirectory);
+
+            // Make sure the property sheets exist (empty) BEFORE conan install, and are imported
+            // unconditionally, so IntelliSense follows them without unloading/reloading the project.
+            string propsSignatureBefore = ComputePropsSignature(projectDirectory);
+            bool propsPrepared = PrepareConanPropsFiles(project);
+            await InjectConanDepsAsync(project, vcConfig);
+
+            bool success;
+            string error;
+
+            // One `conan install` at a time, whatever triggered it: two concurrent installs (e.g. a
+            // profile/configuration event firing while the package manager runs its own) race on
+            // the same Conan cache, and the loser can leave a recipe registered without its files.
+            await _installGate.WaitAsync();
+            try
+            {
+                (success, error) = await RunConanInstallProcessAsync(projectDirectory, profileName);
+
+                // A recipe left half-written in the cache ("seems broken" / "conanfile.py not found")
+                // fails every later install: drop just that reference from the cache and retry once.
+                if (!success && await TryRepairBrokenRecipeAsync(error))
+                {
+                    (success, error) = await RunConanInstallProcessAsync(projectDirectory, profileName);
+                }
+            }
+            finally
+            {
+                _installGate.Release();
+            }
 
             if (!success)
             {
@@ -340,7 +370,181 @@ echo No changes detected, skipping conan install...
 
             await InjectConanDepsAsync(project, vcConfig);
 
+            // The generated property sheets changed (a dependency added/removed/made editable, first-time
+            // wiring...): IntelliSense does not follow on its own, so trigger the same thing as
+            // Project > Rescan Solution - without unloading/reloading the project.
+            if (propsPrepared || ComputePropsSignature(projectDirectory) != propsSignatureBefore)
+            {
+                _ = ThreadHelper.JoinableTaskFactory.RunAsync(() => RescanIntelliSenseAsync(project));
+            }
+
             return true;
+        }
+
+        /**
+         * A fingerprint of every `.props` file under the project's `conan` folder, to know whether
+         * `conan install` changed the include/lib paths the project sees.
+         */
+        private static string ComputePropsSignature(string projectDirectory)
+        {
+            try
+            {
+                string folder = Path.Combine(projectDirectory, "conan");
+                if (!Directory.Exists(folder))
+                {
+                    return string.Empty;
+                }
+
+                var content = new System.Text.StringBuilder();
+                string[] files = Directory.GetFiles(folder, "*.props", SearchOption.AllDirectories);
+                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                foreach (string file in files)
+                {
+                    content.Append(file).Append('\n').Append(File.ReadAllText(file)).Append('\n');
+                }
+
+                using (var sha = System.Security.Cryptography.SHA1.Create())
+                {
+                    return Convert.ToBase64String(sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(content.ToString())));
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProjectConfigurationManager] ComputePropsSignature failed: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /**
+         * Runs Visual Studio's own "Project > Rescan Solution" (`Project.RescanSolution`) so
+         * IntelliSense re-reads the include directories. Waits a moment first: VS re-evaluates the
+         * project asynchronously after its property sheets change and a rescan issued before that
+         * still sees the old paths.
+         */
+        private static async Task RescanIntelliSenseAsync(Project project)
+        {
+            await Task.Delay(1500);
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            try
+            {
+                project.DTE.ExecuteCommand("Project.RescanSolution");
+                ConanOutputPane.Log("IntelliSense : réanalyse de la solution demandée (Projet > Réanalyser la solution).");
+            }
+            catch (Exception ex)
+            {
+                ConanOutputPane.Log($"IntelliSense : la réanalyse de la solution a échoué : {ex.Message}");
+            }
+        }
+
+        private const string EmptyPropsFile =
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n" +
+            "<Project ToolsVersion=\"4.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\" />\r\n";
+
+        /**
+         * Writes an empty `conandeps.props` (never overwriting an existing one) for the extension's
+         * own sheet (`conan\conandeps.props`) and for every `conan\<Config>\conandeps.props` the
+         * .vcxproj already imports, then turns those imports unconditional (drops the
+         * `Condition="Exists(...)"`, evaluated only once when VS loads the project, which left
+         * IntelliSense without the Conan include paths until a reload). `conan install` rewrites
+         * the files afterwards as usual.
+         *
+         * @return True if something was created or the project file was changed (first-time setup).
+         */
+        private static bool PrepareConanPropsFiles(Project project)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            bool changed = false;
+
+            try
+            {
+                string projectFile = project.FullName;
+                string projectDirectory = Path.GetDirectoryName(projectFile);
+                var propsFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    Path.Combine(projectDirectory, "conan", "conandeps.props")
+                };
+
+                string text = File.Exists(projectFile) ? File.ReadAllText(projectFile) : string.Empty;
+                var importRegex = new System.Text.RegularExpressions.Regex(
+                    @"(?<import><Import\s+Project=""conan[\x5C/](?<config>[^\x5C/""']+)[\x5C/]conandeps\.props"")\s+Condition=""[^""]*""",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                foreach (System.Text.RegularExpressions.Match match in importRegex.Matches(text))
+                {
+                    propsFiles.Add(Path.Combine(projectDirectory, "conan", match.Groups["config"].Value, "conandeps.props"));
+                }
+
+                foreach (string propsFile in propsFiles)
+                {
+                    if (!File.Exists(propsFile))
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(propsFile));
+                        File.WriteAllText(propsFile, EmptyPropsFile, new System.Text.UTF8Encoding(false));
+                        changed = true;
+                    }
+                }
+
+                // Per-configuration imports written by hand: make them unconditional now that the files exist.
+                string migrated = importRegex.Replace(text, "${import}");
+                if (migrated != text)
+                {
+                    bool bom = false;
+                    using (var stream = File.OpenRead(projectFile))
+                    {
+                        bom = stream.ReadByte() == 0xEF && stream.ReadByte() == 0xBB && stream.ReadByte() == 0xBF;
+                    }
+
+                    File.WriteAllText(projectFile, migrated, new System.Text.UTF8Encoding(bom));
+                    changed = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProjectConfigurationManager] PrepareConanPropsFiles failed: {ex}");
+            }
+
+            return changed;
+        }
+
+        private static readonly System.Threading.SemaphoreSlim _installGate = new System.Threading.SemaphoreSlim(1, 1);
+
+        /**
+         * If a failed `conan install` reports a recipe that cannot be loaded from the cache (its
+         * folder is missing/incomplete), removes that one reference from the cache
+         * (`conan remove "<name>/<version>" -c`) so the next attempt downloads it again.
+         *
+         * @return True if a broken reference was removed and the install is worth retrying.
+         */
+        private static async Task<bool> TryRepairBrokenRecipeAsync(string error)
+        {
+            if (string.IsNullOrEmpty(error) ||
+                !(error.Contains("Cannot load recipe") || error.Contains("seems broken")))
+            {
+                return false;
+            }
+
+            System.Text.RegularExpressions.Match match = System.Text.RegularExpressions.Regex.Match(
+                error, @"Package '(?<ref>[^']+)' not resolved");
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            string reference = match.Groups["ref"].Value;
+            ConanOutputPane.Log($"Recette '{reference}' corrompue dans le cache Conan : suppression de cette référence puis nouvel essai.");
+
+            try
+            {
+                (int exitCode, string _, string _) = await ConanRemoteHelper.RunConanAsync($"remove \"{reference}\" -c", 60000);
+                return exitCode == 0;
+            }
+            catch (Exception ex)
+            {
+                ConanOutputPane.Log($"  -> exception : {ex.Message}");
+                return false;
+            }
         }
 
         /**

@@ -193,6 +193,16 @@ namespace conan_vs_extension
                     return null;
                 }
 
+                // An unreachable remote does NOT make conan fail: it exits 0 with {"<remote>": {"error": "..."}}.
+                // That is "unreachable", not "0 packages" - report it so callers fall back to the local cache.
+                if (packagesObject["error"]?.Type == JTokenType.String)
+                {
+                    string error = (string)packagesObject["error"];
+                    int firstLineEnd = error.IndexOfAny(new[] { '\r', '\n' });
+                    ConanOutputPane.Log($"  -> remote injoignable ou en erreur : {(firstLineEnd > 0 ? error.Substring(0, firstLineEnd) : error)}");
+                    return null;
+                }
+
                 var libraries = new Dictionary<string, HashSet<string>>();
                 var recipeRegex = new Regex(@"^([\w\-.]+)\/([\w\d.\-]+(?:@[\w\-.]+\/[\w\-.]+)?)$");
 
@@ -203,6 +213,10 @@ namespace conan_vs_extension
                     {
                         string libName = match.Groups[1].Value;
                         string version = match.Groups[2].Value;
+                        if (version.EndsWith("@_/_"))
+                        {
+                            version = version.Substring(0, version.Length - 4);
+                        }
                         if (!libraries.ContainsKey(libName))
                         {
                             libraries[libName] = new HashSet<string>();
@@ -401,6 +415,46 @@ namespace conan_vs_extension
             return RunConanRemoteCommandAsync($"remote logout \"{name}\"");
         }
 
+        /**
+         * Empties the local Conan cache (`conan remove "*" -c`): every recipe and binary package
+         * downloaded or built so far, for all projects. Editable packages are not touched. Bounded
+         * by a 5-minute timeout.
+         */
+        public static async Task<(bool success, string error)> CleanLocalCacheAsync()
+        {
+            const string arguments = "remove \"*\" -c";
+            ConanOutputPane.Log($"conan {arguments}");
+
+            try
+            {
+                (int exitCode, string stdout, string stderr) = await RunConanAsync(arguments, 300000);
+                if (exitCode != 0)
+                {
+                    string error = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+                    ConanOutputPane.Log($"  -> échec (code {exitCode}) : {error}");
+                    return (false, string.IsNullOrWhiteSpace(error) ? $"conan a retourné le code {exitCode}." : error.Trim());
+                }
+
+                ConanOutputPane.Log("  -> OK");
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                ConanOutputPane.Log($"  -> exception : {ex.Message}");
+                return (false, ex.Message);
+            }
+        }
+
+        internal static Task<(int exitCode, string stdout, string stderr)> RunConanAsync(string arguments, int timeoutMs, string workingDirectory = null)
+        {
+            return RunConanCommandAsync(GlobalSettings.GetResolvedConanExecutablePath(), arguments, timeoutMs, workingDirectory);
+        }
+
+        internal static Task<(bool success, string error)> RunConanCheckedAsync(string arguments)
+        {
+            return RunConanRemoteCommandAsync(arguments);
+        }
+
         private static async Task<(bool success, string error)> RunConanRemoteCommandAsync(string arguments)
         {
             string conanPath = GlobalSettings.GetResolvedConanExecutablePath();
@@ -452,23 +506,112 @@ namespace conan_vs_extension
          */
         public static async Task<RecipeMetadata> GetRecipeMetadataAsync(string libName, string version, string remoteName)
         {
+            string text = await GetRecipeTextAsync(libName, version, remoteName);
+            if (text == null)
+            {
+                return null;
+            }
+
+            return new RecipeMetadata
+            {
+                Description = ExtractStringAttribute(text, "description"),
+                License = ExtractLicenseAttribute(text),
+                Homepage = ExtractStringAttribute(text, "homepage"),
+                Author = ExtractStringAttribute(text, "author"),
+                Topics = ExtractTopicsAttribute(text)
+            };
+        }
+
+        /**
+         * Where a recipe gets the sources it compiles from.
+         */
+        public enum RecipeSourceKind
+        {
+            /** The recipe could not be read. */
+            Unknown,
+            /** `exports_sources`: the sources travel inside the package (works offline). */
+            Exported,
+            /** `source()`: the recipe downloads them from somewhere (internet access needed). */
+            Downloaded,
+            /** Neither: nothing to compile from. */
+            None
+        }
+
+        /**
+         * Reads the recipe's conanfile.py (shared with GetRecipeMetadataAsync, fetched only once)
+         * and tells where its sources come from.
+         */
+        public static async Task<RecipeSourceKind> GetRecipeSourceKindAsync(string libName, string version, string remoteName)
+        {
+            string text = await GetRecipeTextAsync(libName, version, remoteName);
+            if (text == null)
+            {
+                return RecipeSourceKind.Unknown;
+            }
+
+            // Ignore commented-out lines.
+            string code = string.Join("\n", text.Split('\n').Where(line => !line.TrimStart().StartsWith("#")));
+
+            // A recipe with a source() method gets its sources from somewhere else (ConanCenter
+            // recipes also export patches/CMakeLists through exports_sources, which is not the code).
+            if (Regex.IsMatch(code, @"def\s+source\s*\("))
+            {
+                return RecipeSourceKind.Downloaded;
+            }
+
+            bool exported = Regex.IsMatch(code, @"^\s*exports_sources\s*=", RegexOptions.Multiline) ||
+                            Regex.IsMatch(code, @"def\s+export_sources\s*\(");
+            return exported ? RecipeSourceKind.Exported : RecipeSourceKind.None;
+        }
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Task<string>> _recipeTextCache =
+            new System.Collections.Concurrent.ConcurrentDictionary<string, Task<string>>(StringComparer.OrdinalIgnoreCase);
+
+        /**
+         * The text of a recipe's conanfile.py, fetched once per remote/reference and shared by every
+         * caller (metadata and source detection ask for the same recipe at the same time). Null on
+         * any failure, which is not remembered so the next call tries again.
+         */
+        private static async Task<string> GetRecipeTextAsync(string libName, string version, string remoteName)
+        {
             if (string.IsNullOrWhiteSpace(libName) || string.IsNullOrWhiteSpace(version) || string.IsNullOrWhiteSpace(remoteName))
             {
                 return null;
             }
 
+            string key = $"{remoteName}|{libName}/{version}";
+            string text = await _recipeTextCache.GetOrAdd(key, _ => FetchRecipeTextAsync(libName, version, remoteName));
+            if (text == null)
+            {
+                _recipeTextCache.TryRemove(key, out Task<string> _);
+            }
+
+            return text;
+        }
+
+        private static async Task<string> FetchRecipeTextAsync(string libName, string version, string remoteName)
+        {
             string reference = $"{libName}/{version}";
             string conanPath = GlobalSettings.GetResolvedConanExecutablePath();
 
             try
             {
-                (int downloadExitCode, string _, string downloadStderr) = await RunConanCommandAsync(
-                    conanPath, $"download \"{reference}\" -r={remoteName} --only-recipe", 30000);
-                if (downloadExitCode != 0)
+                // Was the recipe already in the cache (installed, or used by another project)? If so it
+                // must be left alone below: removing it would also delete its binary packages.
+                (int cachedExitCode, string cachedOutput, string _) = await RunConanCommandAsync(
+                    conanPath, $"cache path \"{reference}\"", 10000);
+                bool wasCached = cachedExitCode == 0 && !string.IsNullOrWhiteSpace(cachedOutput);
+
+                if (!wasCached)
                 {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[ConanRemoteHelper] 'conan download {reference} --only-recipe' failed (exit {downloadExitCode}): {downloadStderr}");
-                    return null;
+                    (int downloadExitCode, string _, string downloadStderr) = await RunConanCommandAsync(
+                        conanPath, $"download \"{reference}\" -r={remoteName} --only-recipe", 30000);
+                    if (downloadExitCode != 0)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[ConanRemoteHelper] 'conan download {reference} --only-recipe' failed (exit {downloadExitCode}): {downloadStderr}");
+                        return null;
+                    }
                 }
 
                 (int cachePathExitCode, string cachePathOutput, string cachePathStderr) = await RunConanCommandAsync(
@@ -485,58 +628,46 @@ namespace conan_vs_extension
                     .Select(line => line.Trim())
                     .LastOrDefault(line => line.Length > 0);
 
-                if (string.IsNullOrWhiteSpace(cachePath))
+                string conanfilePath = string.IsNullOrWhiteSpace(cachePath) ? null : Path.Combine(cachePath, "conanfile.py");
+                if (conanfilePath == null || !File.Exists(conanfilePath))
                 {
                     System.Diagnostics.Debug.WriteLine(
-                        $"[ConanRemoteHelper] 'conan cache path {reference}' returned no usable path. Raw output: {cachePathOutput}");
-                    return null;
-                }
-
-                string conanfilePath = Path.Combine(cachePath, "conanfile.py");
-                if (!File.Exists(conanfilePath))
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[ConanRemoteHelper] conanfile.py not found at '{conanfilePath}' (cache path returned '{cachePath}').");
+                        $"[ConanRemoteHelper] conanfile.py not found for '{reference}' (cache path returned '{cachePath}').");
                     return null;
                 }
 
                 string text = await Task.Run(() => File.ReadAllText(conanfilePath));
 
-                var metadata = new RecipeMetadata
+                // Best-effort cleanup, ONLY for a recipe fetched just to be read: it was not asked for
+                // by the user, so don't leave it sitting in the cache.
+                if (!wasCached)
                 {
-                    Description = ExtractStringAttribute(text, "description"),
-                    License = ExtractLicenseAttribute(text),
-                    Homepage = ExtractStringAttribute(text, "homepage"),
-                    Author = ExtractStringAttribute(text, "author"),
-                    Topics = ExtractTopicsAttribute(text)
-                };
-
-                // Best-effort cleanup: this recipe was only downloaded to read its metadata, not
-                // because the user asked to install it, so don't leave it sitting in the cache.
-                try
-                {
-                    await RunConanCommandAsync(conanPath, $"remove \"{reference}\" -c", 15000);
-                }
-                catch
-                {
-                    // Not fatal - the metadata was already read successfully above.
+                    try
+                    {
+                        await RunConanCommandAsync(conanPath, $"remove \"{reference}\" -c", 15000);
+                    }
+                    catch
+                    {
+                        // Not fatal - the text was already read successfully above.
+                    }
                 }
 
-                return metadata;
+                return text;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ConanRemoteHelper] GetRecipeMetadataAsync('{reference}', remote '{remoteName}') threw: {ex}");
+                System.Diagnostics.Debug.WriteLine($"[ConanRemoteHelper] FetchRecipeTextAsync('{reference}', remote '{remoteName}') threw: {ex}");
                 return null;
             }
         }
 
-        private static async Task<(int exitCode, string stdout, string stderr)> RunConanCommandAsync(string conanPath, string arguments, int timeoutMs)
+        private static async Task<(int exitCode, string stdout, string stderr)> RunConanCommandAsync(string conanPath, string arguments, int timeoutMs, string workingDirectory = null)
         {
             var psi = new ProcessStartInfo
             {
                 FileName = conanPath,
                 Arguments = arguments,
+                WorkingDirectory = workingDirectory ?? string.Empty,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,

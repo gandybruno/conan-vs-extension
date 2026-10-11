@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:conan_vs_extension"
              xmlns:vsshell="clr-namespace:Microsoft.VisualStudio.Shell;assembly=Microsoft.VisualStudio.Shell.15.0"
              Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"
              Foreground="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"
@@ -15,6 +16,8 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/conan-vs-extension;component/Resources/icons.xaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <local:PackageSubtitleConverter x:Key="PackageSubtitleConverter"/>
 
             <Style x:Key="TabButtonStyle" TargetType="Button">
                 <Setter Property="Background" Value="Transparent"/>
@@ -37,6 +40,35 @@
                 <Setter Property="BorderBrush" Value="{DynamicResource {x:Static vsshell:VsBrushes.ActiveBorderKey}}"/>
                 <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="CaretBrush" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"/>
+            </Style>
+
+            <Style x:Key="ThemedCheckBoxStyle" TargetType="CheckBox">
+                <Setter Property="Foreground" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"/>
+                <Setter Property="Background" Value="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource {x:Static vsshell:VsBrushes.ActiveBorderKey}}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CheckBox">
+                            <StackPanel Orientation="Horizontal" Background="Transparent">
+                                <Border Width="16" Height="16" BorderThickness="1" VerticalAlignment="Center"
+                                        Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}">
+                                    <Path x:Name="CheckMark" Visibility="Collapsed" Stretch="Uniform" Margin="2"
+                                          Data="M0,5 L3,9 L10,0" StrokeThickness="2" Stroke="{TemplateBinding Foreground}"/>
+                                </Border>
+                                <ContentPresenter Margin="6,0,0,0" VerticalAlignment="Center"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}"/>
+                            </StackPanel>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <Style x:Key="ThemedButtonStyle" TargetType="Button">
@@ -356,7 +388,7 @@
                             <DataTemplate>
                                 <StackPanel Orientation="Vertical">
                                     <TextBlock Text="{Binding}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="Package Conan" Opacity="0.7" FontSize="11" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding Converter={StaticResource PackageSubtitleConverter}}" Opacity="0.7" FontSize="11" Margin="0,2,0,0"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -412,14 +444,26 @@
                            Foreground="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"/>
                 </StackPanel>
 
-                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                <StackPanel Grid.Row="1" Orientation="Vertical" Margin="0,0,0,10">
+                <StackPanel Orientation="Horizontal">
                     <TextBlock Text="Version :" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <ComboBox x:Name="VersionsComboBox" Width="200" VerticalAlignment="Center" Style="{StaticResource ThemedComboBoxStyle}" SelectionChanged="VersionsComboBox_SelectionChanged"/>
                     <Button x:Name="InstallButton" Content="Installer" Margin="12,0,0,0" Padding="14,4" Click="InstallButton_Click" VerticalAlignment="Center" Style="{StaticResource ThemedButtonStyle}"/>
-                    <Button x:Name="RemoveButton" Content="Désinstaller" Margin="12,0,0,0" Padding="14,4" Click="RemoveButton_Click" VerticalAlignment="Center" Style="{StaticResource ThemedButtonStyle}"/>
+                    <Button x:Name="RemoveButton" Content="Retirer du projet" Margin="12,0,0,0" Padding="14,4" Click="RemoveButton_Click" VerticalAlignment="Center" ToolTip="Retire la dépendance de ce projet (conandata.yml). Le paquet reste dans le cache Conan." Style="{StaticResource ThemedButtonStyle}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <CheckBox x:Name="EditableCheckBox" Content="Éditable (sources locales)" Style="{StaticResource ThemedCheckBoxStyle}" VerticalAlignment="Center" Click="EditableCheckBox_Click"
+                              ToolTip="Utiliser les sources locales de cette bibliothèque (conan editable) pour la modifier et la déboguer. Actif pour tous les projets qui utilisent cette version."/>
+                    <Button x:Name="EditableFolderButton" Content="Dossier..." Margin="8,0,0,0" Padding="10,4" Click="EditableFolderButton_Click" VerticalAlignment="Center" Style="{StaticResource ThemedButtonStyle}"
+                            ToolTip="Changer le dossier des sources de cette bibliothèque éditable."/>
+                </StackPanel>
                 </StackPanel>
 
-                <TextBlock x:Name="InstalledStatusTextBlock" Grid.Row="2" Margin="0,0,0,10" FontStyle="Italic" Opacity="0.7"/>
+                <StackPanel Grid.Row="2" Margin="0,0,0,10">
+                    <TextBlock x:Name="InstalledStatusTextBlock" FontStyle="Italic" Opacity="0.7" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="CompatibilityTextBlock" Margin="0,6,0,0" TextWrapping="Wrap" FontWeight="SemiBold" Visibility="Collapsed"/>
+                    <TextBlock x:Name="BinariesTextBlock" Margin="0,6,0,0" TextWrapping="Wrap" Opacity="0.8" Visibility="Collapsed"/>
+                </StackPanel>
 
                 <Separator Grid.Row="3" Margin="0,0,0,10"/>
 

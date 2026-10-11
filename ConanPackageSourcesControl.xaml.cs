@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Microsoft.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Shell;
 
 namespace conan_vs_extension
@@ -328,6 +329,45 @@ namespace conan_vs_extension
         }
 
         /**
+         * The "Nettoyer le cache..." button: after confirmation, empties the whole local Conan cache
+         * (`conan remove "*" -c`). Projects reinstall what they need on their next `conan install`.
+         */
+        private void CleanCacheButton_Click(object sender, RoutedEventArgs e)
+        {
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(CleanCacheButtonClickAsync);
+        }
+
+        private async Task CleanCacheButtonClickAsync()
+        {
+            MessageBoxResult answer = MessageBox.Show(
+                "Supprimer tous les paquets du cache local Conan ?\n\n" +
+                "Cela concerne tous les projets de cette machine : les paquets seront retéléchargés " +
+                "(ou recompilés) au prochain 'conan install'. Les paquets éditables ne sont pas touchés.",
+                "Conan C/C++ Package Manager", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            bool success;
+            string error;
+            using (BusyIndicator.Show(this, "Nettoyage du cache en cours..."))
+            {
+                (success, error) = await ConanRemoteHelper.CleanLocalCacheAsync();
+            }
+
+            if (success)
+            {
+                MessageBox.Show("Cache Conan nettoyé.", "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show($"Impossible de nettoyer le cache :\n{error}", "Conan C/C++ Package Manager",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /**
          * The "Activer"/"Désactiver" button: toggles the remote via `conan remote enable`/`disable` without removing its configuration.
          */
         private void EnableDisableButton_Click(object sender, RoutedEventArgs e)
@@ -403,6 +443,7 @@ namespace conan_vs_extension
                 Style = System.Windows.Forms.ProgressBarStyle.Marquee,
                 MarqueeAnimationSpeed = 30
             });
+            VsTheme.Apply(_form);
             _form.Show();
             _form.Refresh();
         }
@@ -544,6 +585,7 @@ namespace conan_vs_extension
                 }
             };
 
+            VsTheme.Apply(form);
             if (form.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             {
                 return null;
@@ -615,6 +657,7 @@ namespace conan_vs_extension
             form.AcceptButton = okButton;
             form.CancelButton = cancelButton;
 
+            VsTheme.Apply(form);
             System.Windows.Forms.DialogResult result = form.ShowDialog();
             if (result != System.Windows.Forms.DialogResult.OK || string.IsNullOrWhiteSpace(usernameTextBox.Text))
             {
@@ -645,6 +688,76 @@ namespace conan_vs_extension
             }
 
             return null;
+        }
+    }
+
+    /**
+     * Gives a WinForms dialog the colors of the Visual Studio theme currently in use (light, dark,
+     * blue...), so the dialogs this extension opens match the IDE instead of the system colors.
+     */
+    internal static class VsTheme
+    {
+        public static void Apply(System.Windows.Forms.Form form)
+        {
+            System.Drawing.Color back = VSColorTheme.GetThemedColor(EnvironmentColors.ToolWindowBackgroundColorKey);
+            System.Drawing.Color fore = VSColorTheme.GetThemedColor(EnvironmentColors.ToolWindowTextColorKey);
+            System.Drawing.Color fieldBack = VSColorTheme.GetThemedColor(EnvironmentColors.ComboBoxBackgroundColorKey);
+            System.Drawing.Color fieldFore = VSColorTheme.GetThemedColor(EnvironmentColors.ComboBoxTextColorKey);
+            System.Drawing.Color border = VSColorTheme.GetThemedColor(EnvironmentColors.ComboBoxBorderColorKey);
+
+            form.BackColor = back;
+            form.ForeColor = fore;
+            ApplyTo(form.Controls, back, fore, fieldBack, fieldFore, border);
+        }
+
+        private static void ApplyTo(System.Windows.Forms.Control.ControlCollection controls,
+            System.Drawing.Color back, System.Drawing.Color fore,
+            System.Drawing.Color fieldBack, System.Drawing.Color fieldFore, System.Drawing.Color border)
+        {
+            foreach (System.Windows.Forms.Control control in controls)
+            {
+                switch (control)
+                {
+                    case System.Windows.Forms.TextBox textBox:
+                        textBox.BackColor = fieldBack;
+                        textBox.ForeColor = fieldFore;
+                        textBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+                        break;
+                    case System.Windows.Forms.ComboBox comboBox:
+                        comboBox.BackColor = fieldBack;
+                        comboBox.ForeColor = fieldFore;
+                        comboBox.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+                        break;
+                    case System.Windows.Forms.Button button:
+                        button.BackColor = fieldBack;
+                        button.ForeColor = fieldFore;
+                        button.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+                        button.FlatAppearance.BorderColor = border;
+                        break;
+                    case System.Windows.Forms.Label label:
+                        label.BackColor = back;
+                        // Secondary (gray) text keeps its "muted" look, blended against the theme.
+                        label.ForeColor = label.ForeColor == System.Drawing.SystemColors.GrayText ? Blend(fore, back, 0.65) : fore;
+                        break;
+                    default:
+                        control.BackColor = back;
+                        control.ForeColor = fore;
+                        break;
+                }
+
+                if (control.HasChildren)
+                {
+                    ApplyTo(control.Controls, back, fore, fieldBack, fieldFore, border);
+                }
+            }
+        }
+
+        private static System.Drawing.Color Blend(System.Drawing.Color a, System.Drawing.Color b, double weightOfA)
+        {
+            return System.Drawing.Color.FromArgb(
+                (int)(a.R * weightOfA + b.R * (1 - weightOfA)),
+                (int)(a.G * weightOfA + b.G * (1 - weightOfA)),
+                (int)(a.B * weightOfA + b.B * (1 - weightOfA)));
         }
     }
 }
