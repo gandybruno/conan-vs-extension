@@ -96,7 +96,7 @@ namespace conan_vs_extension
 
             this.Loaded += ConanPackageManagerControl_Loaded;
 
-            HeaderTitleTextBlock.Text = "Gestionnaire de packages Conan : " + (project?.Name ?? string.Empty);
+            HeaderTitleTextBlock.Text = Loc.T("Conan Package Manager: ", "Gestionnaire de packages Conan : ") + (project?.Name ?? string.Empty);
 
             LibrarySearchComboBox.ItemsSource = _recentSearches;
             // ComboBox has no public "TextChanged" event of its own (that belongs to the internal
@@ -557,8 +557,8 @@ namespace conan_vs_extension
             VersionsComboBox.IsEnabled = !isInstalled;
 
             InstalledStatusTextBlock.Text = isInstalled
-                ? $"Installé : {installedRequirement.Substring(name.Length + 1)}"
-                : "Non installé dans ce projet.";
+                ? Loc.T($"Installed: {installedRequirement.Substring(name.Length + 1)}", $"Installé : {installedRequirement.Substring(name.Length + 1)}")
+                : Loc.T("Not installed in this project.", "Non installé dans ce projet.");
 
             EditableCheckBox.Visibility = isInstalled ? Visibility.Visible : Visibility.Collapsed;
             EditableFolderButton.Visibility = Visibility.Collapsed;
@@ -590,8 +590,8 @@ namespace conan_vs_extension
             EditableCheckBox.IsChecked = editable;
             EditableFolderButton.Visibility = editable ? Visibility.Visible : Visibility.Collapsed;
             InstalledStatusTextBlock.Text = editable
-                ? $"Installé : {version} - éditable : {path}"
-                : $"Installé : {version}";
+                ? Loc.T($"Installed: {version} - editable: {path}", $"Installé : {version} - éditable : {path}")
+                : Loc.T($"Installed: {version}", $"Installé : {version}");
         }
 
         /**
@@ -662,7 +662,9 @@ namespace conan_vs_extension
             {
                 using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
                 {
-                    dialog.Description = $"Dossier contenant le conanfile.py de {selectedLibrary} (sources à modifier/déboguer)";
+                    dialog.Description = Loc.T(
+                        $"Folder containing the conanfile.py of {selectedLibrary} (sources to modify/debug)",
+                        $"Dossier contenant le conanfile.py de {selectedLibrary} (sources à modifier/déboguer)");
                     dialog.ShowNewFolderButton = false;
                     if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                     {
@@ -679,8 +681,8 @@ namespace conan_vs_extension
             EditableCheckBox.IsEnabled = false;
             EditableFolderButton.IsEnabled = false;
             InstallOperationStatusText.Text = enable
-                ? $"Passage de {requirement} en mode éditable en cours..."
-                : $"Retour de {requirement} au paquet du cache en cours...";
+                ? Loc.T($"Switching {requirement} to editable mode...", $"Passage de {requirement} en mode éditable en cours...")
+                : Loc.T($"Switching {requirement} back to the cached package...", $"Retour de {requirement} au paquet du cache en cours...");
             InstallOperationOverlay.Visibility = Visibility.Visible;
             try
             {
@@ -691,8 +693,8 @@ namespace conan_vs_extension
                 if (!success)
                 {
                     MessageBox.Show(
-                        enable ? $"Impossible de passer {requirement} en mode éditable :\n{error}"
-                               : $"Impossible de quitter le mode éditable de {requirement} :\n{error}",
+                        enable ? Loc.T($"Could not switch {requirement} to editable mode:\n{error}", $"Impossible de passer {requirement} en mode éditable :\n{error}")
+                               : Loc.T($"Could not leave editable mode for {requirement}:\n{error}", $"Impossible de quitter le mode éditable de {requirement} :\n{error}"),
                         "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
@@ -708,15 +710,17 @@ namespace conan_vs_extension
                 if (!installed)
                 {
                     MessageBox.Show(
-                        $"Le mode éditable de {requirement} a été modifié, mais 'conan install' a échoué :\n{ProjectConfigurationManager.LastConanInstallError}\n\n" +
-                        "Une recette éditable doit définir layout() et ses fichiers générés (conan install/build dans son dossier) doivent exister.",
+                        Loc.T($"Editable mode of {requirement} was changed, but 'conan install' failed:\n{ProjectConfigurationManager.LastConanInstallError}\n\n",
+                              $"Le mode éditable de {requirement} a été modifié, mais 'conan install' a échoué :\n{ProjectConfigurationManager.LastConanInstallError}\n\n") +
+                        Loc.T("An editable recipe must define layout() and its generated files (conan install/build in its folder) must exist.",
+                              "Une recette éditable doit définir layout() et ses fichiers générés (conan install/build dans son dossier) doivent exister."),
                         "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
             catch (Exception ex)
             {
-                ConanOutputPane.Log($"Mode éditable de {requirement} : exception inattendue : {ex}");
-                MessageBox.Show($"Une erreur inattendue est survenue :\n{ex.Message}",
+                ConanOutputPane.Log(Loc.T($"Editable mode of {requirement}: unexpected exception: {ex}", $"Mode éditable de {requirement} : exception inattendue : {ex}"));
+                MessageBox.Show(Loc.T($"An unexpected error occurred:\n{ex.Message}", $"Une erreur inattendue est survenue :\n{ex.Message}"),
                     "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
@@ -853,7 +857,7 @@ namespace conan_vs_extension
                 profileName = ConanProfilesManager.getProfileName(activeConfig);
             }
 
-            CompatibilityTextBlock.Text = "Vérification de la compatibilité avec le projet...";
+            CompatibilityTextBlock.Text = Loc.T("Checking compatibility with the project...", "Vérification de la compatibilité avec le projet...");
             CompatibilityTextBlock.Visibility = Visibility.Visible;
             BinariesTextBlock.Visibility = Visibility.Collapsed;
             InstallButton.IsEnabled = false;
@@ -873,8 +877,10 @@ namespace conan_vs_extension
                 if (sourceKind == ConanRemoteHelper.RecipeSourceKind.None)
                 {
                     result.State = ConanCompatibilityHelper.CompatibilityState.Incompatible;
-                    result.Reason = "aucun binaire n'existe pour ce profil et la recette n'a pas de sources " +
-                                    "(ni exports_sources, ni source()) : la compilation est impossible.";
+                    result.Reason = Loc.T("no binary exists for this profile and the recipe has no sources " +
+                                          "(neither exports_sources nor source()): building is impossible.",
+                                          "aucun binaire n'existe pour ce profil et la recette n'a pas de sources " +
+                                          "(ni exports_sources, ni source()) : la compilation est impossible.");
                 }
             }
 
@@ -888,27 +894,30 @@ namespace conan_vs_extension
             switch (result.State)
             {
                 case ConanCompatibilityHelper.CompatibilityState.PrebuiltAvailable:
-                    CompatibilityTextBlock.Text = $"✔ Un binaire correspond à ce projet{profile}.";
+                    CompatibilityTextBlock.Text = Loc.T($"✔ A binary matches this project{profile}.", $"✔ Un binaire correspond à ce projet{profile}.");
                     break;
                 case ConanCompatibilityHelper.CompatibilityState.WillBuild:
                     CompatibilityTextBlock.Text = sourceKind == ConanRemoteHelper.RecipeSourceKind.Downloaded
-                        ? $"⚠ Aucun binaire précompilé pour ce projet{profile} : la bibliothèque sera compilée ; la recette télécharge ses sources depuis internet (accès réseau nécessaire)."
+                        ? Loc.T($"⚠ No prebuilt binary for this project{profile}: the library will be built; the recipe downloads its sources from the internet (network access required).",
+                                $"⚠ Aucun binaire précompilé pour ce projet{profile} : la bibliothèque sera compilée ; la recette télécharge ses sources depuis internet (accès réseau nécessaire).")
                         : sourceKind == ConanRemoteHelper.RecipeSourceKind.Exported
-                            ? $"⚠ Aucun binaire précompilé pour ce projet{profile} : la bibliothèque sera compilée à partir des sources incluses dans le paquet."
-                            : $"⚠ Aucun binaire précompilé pour ce projet{profile} : la bibliothèque sera compilée depuis les sources.";
+                            ? Loc.T($"⚠ No prebuilt binary for this project{profile}: the library will be built from the sources included in the package.",
+                                    $"⚠ Aucun binaire précompilé pour ce projet{profile} : la bibliothèque sera compilée à partir des sources incluses dans le paquet.")
+                            : Loc.T($"⚠ No prebuilt binary for this project{profile}: the library will be built from source.",
+                                    $"⚠ Aucun binaire précompilé pour ce projet{profile} : la bibliothèque sera compilée depuis les sources.");
                     break;
                 case ConanCompatibilityHelper.CompatibilityState.Incompatible:
-                    CompatibilityTextBlock.Text = $"⛔ Incompatible avec ce projet{profile} : {result.Reason}";
+                    CompatibilityTextBlock.Text = Loc.T($"⛔ Incompatible with this project{profile}: {result.Reason}", $"⛔ Incompatible avec ce projet{profile} : {result.Reason}");
                     break;
                 default:
                     CompatibilityTextBlock.Text = string.IsNullOrEmpty(result.Reason)
-                        ? "Compatibilité non vérifiable."
-                        : $"Compatibilité non vérifiable : {result.Reason}";
+                        ? Loc.T("Compatibility could not be verified.", "Compatibilité non vérifiable.")
+                        : Loc.T($"Compatibility could not be verified: {result.Reason}", $"Compatibilité non vérifiable : {result.Reason}");
                     break;
             }
 
             InstallButton.IsEnabled = result.State != ConanCompatibilityHelper.CompatibilityState.Incompatible;
-            InstallButton.ToolTip = InstallButton.IsEnabled ? null : "Installation impossible : paquet incompatible avec ce projet.";
+            InstallButton.ToolTip = InstallButton.IsEnabled ? null : Loc.T("Installation impossible: package incompatible with this project.", "Installation impossible : paquet incompatible avec ce projet.");
 
             if (available == null)
             {
@@ -917,8 +926,8 @@ namespace conan_vs_extension
             else
             {
                 BinariesTextBlock.Text = available.Count == 0
-                    ? $"Aucun binaire précompilé publié sur « {remoteName} » pour cette version."
-                    : $"Binaires publiés sur « {remoteName} » :{Environment.NewLine}" +
+                    ? Loc.T($"No prebuilt binary published on \"{remoteName}\" for this version.", $"Aucun binaire précompilé publié sur « {remoteName} » pour cette version.")
+                    : Loc.T($"Binaries published on \"{remoteName}\":", $"Binaires publiés sur « {remoteName} » :") + Environment.NewLine +
                       string.Join(Environment.NewLine, available.Take(12).Select(line => "  • " + line)) +
                       (available.Count > 12 ? $"{Environment.NewLine}  … (+{available.Count - 12})" : string.Empty);
                 BinariesTextBlock.Visibility = Visibility.Visible;
@@ -989,7 +998,8 @@ namespace conan_vs_extension
 
             if (!ConanFileManager.IsFileCommentGuarded(conandataPath))
             {
-                MessageBox.Show($"Requirement {selectedLibrary}/{selectedVersion} could not be added to conandata.yml because it was modified. Please, update the file manually.",
+                MessageBox.Show(Loc.T($"Requirement {selectedLibrary}/{selectedVersion} could not be added to conandata.yml because it was modified. Please, update the file manually.",
+                                      $"Le requirement {selectedLibrary}/{selectedVersion} n'a pas pu être ajouté à conandata.yml car ce fichier a été modifié. Mettez-le à jour manuellement."),
                                 "Conan C/C++ Package Manager",
                                 MessageBoxButton.OK,
                                 MessageBoxImage.Warning);
@@ -1004,7 +1014,7 @@ namespace conan_vs_extension
             // Build already has everything it needs.
             InstallButton.IsEnabled = false;
             RemoveButton.IsEnabled = false;
-            InstallOperationStatusText.Text = $"Installation de {selectedLibrary}/{selectedVersion} en cours...";
+            InstallOperationStatusText.Text = Loc.T($"Installing {selectedLibrary}/{selectedVersion}...", $"Installation de {selectedLibrary}/{selectedVersion} en cours...");
             InstallOperationOverlay.Visibility = Visibility.Visible;
             try
             {
@@ -1024,12 +1034,13 @@ namespace conan_vs_extension
 
                 if (installed)
                 {
-                    MessageBox.Show($"{selectedLibrary}/{selectedVersion} installé.", "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show(Loc.T($"{selectedLibrary}/{selectedVersion} installed.", $"{selectedLibrary}/{selectedVersion} installé."), "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 else
                 {
                     MessageBox.Show(
-                        $"{selectedLibrary}/{selectedVersion} a été ajouté à conandata.yml, mais 'conan install' a échoué :\n{ProjectConfigurationManager.LastConanInstallError}\n\nLe prochain Build réessaiera automatiquement.",
+                        Loc.T($"{selectedLibrary}/{selectedVersion} was added to conandata.yml, but 'conan install' failed:\n{ProjectConfigurationManager.LastConanInstallError}\n\nThe next Build will retry automatically.",
+                              $"{selectedLibrary}/{selectedVersion} a été ajouté à conandata.yml, mais 'conan install' a échoué :\n{ProjectConfigurationManager.LastConanInstallError}\n\nLe prochain Build réessaiera automatiquement."),
                         "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
@@ -1038,9 +1049,10 @@ namespace conan_vs_extension
                 // This method is an async void event handler - an exception left to propagate out
                 // of it (e.g. an unexpected VCProject COM failure) would not be catchable by any
                 // caller and can destabilize/crash Visual Studio instead of just this operation.
-                ConanOutputPane.Log($"Installation de {selectedLibrary}/{selectedVersion} : exception inattendue : {ex}");
+                ConanOutputPane.Log(Loc.T($"Installing {selectedLibrary}/{selectedVersion}: unexpected exception: {ex}", $"Installation de {selectedLibrary}/{selectedVersion} : exception inattendue : {ex}"));
                 MessageBox.Show(
-                    $"Une erreur inattendue est survenue pendant l'installation de {selectedLibrary}/{selectedVersion} :\n{ex.Message}",
+                    Loc.T($"An unexpected error occurred while installing {selectedLibrary}/{selectedVersion}:\n{ex.Message}",
+                          $"Une erreur inattendue est survenue pendant l'installation de {selectedLibrary}/{selectedVersion} :\n{ex.Message}"),
                     "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
@@ -1095,7 +1107,8 @@ namespace conan_vs_extension
 
             if (!ConanFileManager.IsFileCommentGuarded(conandataPath))
             {
-                MessageBox.Show($"Requirement {installedRequirement} could not be removed from conandata.yml because it was modified. Please, update the file manually.",
+                MessageBox.Show(Loc.T($"Requirement {installedRequirement} could not be removed from conandata.yml because it was modified. Please, update the file manually.",
+                                      $"Le requirement {installedRequirement} n'a pas pu être retiré de conandata.yml car ce fichier a été modifié. Mettez-le à jour manuellement."),
                                 "Conan C/C++ Package Manager",
                                 MessageBoxButton.OK,
                                 MessageBoxImage.Warning);
@@ -1106,7 +1119,7 @@ namespace conan_vs_extension
 
             InstallButton.IsEnabled = false;
             RemoveButton.IsEnabled = false;
-            InstallOperationStatusText.Text = $"Retrait de {installedRequirement} du projet en cours...";
+            InstallOperationStatusText.Text = Loc.T($"Removing {installedRequirement} from the project...", $"Retrait de {installedRequirement} du projet en cours...");
             InstallOperationOverlay.Visibility = Visibility.Visible;
             try
             {
@@ -1121,7 +1134,8 @@ namespace conan_vs_extension
                 if (!installed)
                 {
                     MessageBox.Show(
-                        $"{installedRequirement} a été retiré du projet (conandata.yml), mais 'conan install' a échoué :\n{ProjectConfigurationManager.LastConanInstallError}\n\nLe prochain Build réessaiera automatiquement.",
+                        Loc.T($"{installedRequirement} was removed from the project (conandata.yml), but 'conan install' failed:\n{ProjectConfigurationManager.LastConanInstallError}\n\nThe next Build will retry automatically.",
+                              $"{installedRequirement} a été retiré du projet (conandata.yml), mais 'conan install' a échoué :\n{ProjectConfigurationManager.LastConanInstallError}\n\nLe prochain Build réessaiera automatiquement."),
                         "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
@@ -1130,9 +1144,10 @@ namespace conan_vs_extension
                 // This method is an async void event handler - an exception left to propagate out
                 // of it (e.g. an unexpected VCProject COM failure) would not be catchable by any
                 // caller and can destabilize/crash Visual Studio instead of just this operation.
-                ConanOutputPane.Log($"Retrait de {installedRequirement} : exception inattendue : {ex}");
+                ConanOutputPane.Log(Loc.T($"Removing {installedRequirement}: unexpected exception: {ex}", $"Retrait de {installedRequirement} : exception inattendue : {ex}"));
                 MessageBox.Show(
-                    $"Une erreur inattendue est survenue pendant le retrait de {installedRequirement} :\n{ex.Message}",
+                    Loc.T($"An unexpected error occurred while removing {installedRequirement}:\n{ex.Message}",
+                          $"Une erreur inattendue est survenue pendant le retrait de {installedRequirement} :\n{ex.Message}"),
                     "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
@@ -1194,7 +1209,7 @@ namespace conan_vs_extension
             InstalledTabButton.IsEnabled = enabled;
             PackageSourceComboBox.IsEnabled = enabled;
 
-            LibrarySearchComboBox.Text = enabled ? "" : "Conan introuvable : cliquez sur 'Configurer' pour définir son chemin -->";
+            LibrarySearchComboBox.Text = enabled ? "" : Loc.T("Conan not found: click 'Configure' to set its path -->", "Conan introuvable : cliquez sur 'Configurer' pour définir son chemin -->");
         }
 
         /**
@@ -1232,7 +1247,8 @@ namespace conan_vs_extension
                 if (popUp)
                 {
                     MessageBox.Show(
-                        "Aucun remote Conan n'est configuré sur cette machine. Ajoutez-en un avec 'conan remote add <nom> <url>' puis cliquez sur Actualiser.",
+                        Loc.T("No Conan remote is configured on this machine. Add one with 'conan remote add <name> <url>' then click Refresh.",
+                              "Aucun remote Conan n'est configuré sur cette machine. Ajoutez-en un avec 'conan remote add <nom> <url>' puis cliquez sur Actualiser."),
                         "Conan C/C++ Package Manager",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
@@ -1255,7 +1271,7 @@ namespace conan_vs_extension
                     await LoadLibrariesFromJsonAsync();
 
                     if (popUp)
-                        MessageBox.Show($"Liste des packages conan mise à jour ({libraries.Count} bibliothèque(s)) depuis '{source.DisplayName}'.", "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+                        MessageBox.Show(Loc.T($"Conan package list updated ({libraries.Count} librarie(s)) from '{source.DisplayName}'.", $"Liste des packages conan mise à jour ({libraries.Count} bibliothèque(s)) depuis '{source.DisplayName}'."), "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
@@ -1263,7 +1279,7 @@ namespace conan_vs_extension
                 // silently showing whatever stale targets-data.json happened to be on disk from a
                 // past session - that's exactly the "looks like server data but we're offline" bug.
                 // Fall back to what Conan's own local cache genuinely has available right now.
-                ConanOutputPane.Log($"Remote '{source.DisplayName}' injoignable, repli sur le cache local.");
+                ConanOutputPane.Log(Loc.T($"Remote '{source.DisplayName}' unreachable, falling back to the local cache.", $"Remote '{source.DisplayName}' injoignable, repli sur le cache local."));
                 Dictionary<string, HashSet<string>> cacheLibraries = await ConanRemoteHelper.ListLocalCachePackagesAsync();
 
                 OfflineBannerBorder.Visibility = Visibility.Visible;
@@ -1274,15 +1290,17 @@ namespace conan_vs_extension
                 {
                     int cacheCount = cacheLibraries?.Count ?? 0;
                     MessageBox.Show(
-                        $"Le remote '{source.DisplayName}' est injoignable (hors ligne ?).\n" +
-                        $"{cacheCount} bibliothèque(s) affichée(s) depuis le cache Conan local (paquets déjà téléchargés).",
+                        Loc.T($"The remote '{source.DisplayName}' is unreachable (offline?).\n" +
+                              $"{cacheCount} librarie(s) shown from the local Conan cache (already downloaded packages).",
+                              $"Le remote '{source.DisplayName}' est injoignable (hors ligne ?).\n" +
+                              $"{cacheCount} bibliothèque(s) affichée(s) depuis le cache Conan local (paquets déjà téléchargés)."),
                         "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
             catch (Exception ex)
             {
                 if (popUp)
-                    MessageBox.Show($"Erreur mise à jour : {ex.Message}", "Error - Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show(Loc.T($"Update error: {ex.Message}", $"Erreur mise à jour : {ex.Message}"), "Error - Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -1340,7 +1358,7 @@ namespace conan_vs_extension
             // standard Conan protocol reached the remote fine, 0 matches) or null (unreachable).
             if (libraries != null && popUp)
             {
-                MessageBox.Show($"Aucun package trouvé sur le remote '{source.RemoteName}'.", "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(Loc.T($"No package found on remote '{source.RemoteName}'.", $"Aucun package trouvé sur le remote '{source.RemoteName}'."), "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
             return libraries;
@@ -1361,7 +1379,8 @@ namespace conan_vs_extension
             if (string.IsNullOrWhiteSpace(token) && popUp)
             {
                 string input = MessageBoxWithInput.Show(
-                    $"Le remote GitLab '{remoteName}' nécessite un token d'accès (scope 'read_api') pour lister ses packages.\nEntrez le token (laissez vide pour un projet public) :",
+                    Loc.T($"The GitLab remote '{remoteName}' needs an access token (scope 'read_api') to list its packages.\nEnter the token (leave empty for a public project):",
+                          $"Le remote GitLab '{remoteName}' nécessite un token d'accès (scope 'read_api') pour lister ses packages.\nEntrez le token (laissez vide pour un projet public) :"),
                     "Conan C/C++ Package Manager", string.Empty);
                 if (input != null)
                 {
@@ -1415,7 +1434,7 @@ namespace conan_vs_extension
                 // internet" case the user reported; treat it the same as the standard Conan
                 // protocol failing (null), rather than letting the whole refresh throw.
                 System.Diagnostics.Debug.WriteLine($"[ConanPackageManagerControl] GitLab Packages API unreachable for '{remoteName}': {ex}");
-                ConanOutputPane.Log($"GitLab Packages API ({remoteName}) injoignable : {ex.Message}");
+                ConanOutputPane.Log(Loc.T($"GitLab Packages API ({remoteName}) unreachable: {ex.Message}", $"GitLab Packages API ({remoteName}) injoignable : {ex.Message}"));
                 return null;
             }
         }
@@ -1507,7 +1526,7 @@ namespace conan_vs_extension
 
             if (Editable.Contains(name))
             {
-                text += " ✎ éditable";
+                text += Loc.T(" ✎ editable", " ✎ éditable");
             }
 
             return text;

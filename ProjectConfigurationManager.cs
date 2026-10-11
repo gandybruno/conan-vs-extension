@@ -429,11 +429,11 @@ echo No changes detected, skipping conan install...
             try
             {
                 project.DTE.ExecuteCommand("Project.RescanSolution");
-                ConanOutputPane.Log("IntelliSense : réanalyse de la solution demandée (Projet > Réanalyser la solution).");
+                ConanOutputPane.Log(Loc.T("IntelliSense: solution rescan requested (Project > Rescan Solution).", "IntelliSense : réanalyse de la solution demandée (Projet > Réanalyser la solution)."));
             }
             catch (Exception ex)
             {
-                ConanOutputPane.Log($"IntelliSense : la réanalyse de la solution a échoué : {ex.Message}");
+                ConanOutputPane.Log(Loc.T($"IntelliSense: the solution rescan failed: {ex.Message}", $"IntelliSense : la réanalyse de la solution a échoué : {ex.Message}"));
             }
         }
 
@@ -533,7 +533,7 @@ echo No changes detected, skipping conan install...
             }
 
             string reference = match.Groups["ref"].Value;
-            ConanOutputPane.Log($"Recette '{reference}' corrompue dans le cache Conan : suppression de cette référence puis nouvel essai.");
+            ConanOutputPane.Log(Loc.T($"Recipe '{reference}' is corrupted in the Conan cache: removing this reference and retrying.", $"Recette '{reference}' corrompue dans le cache Conan : suppression de cette référence puis nouvel essai."));
 
             try
             {
@@ -542,7 +542,7 @@ echo No changes detected, skipping conan install...
             }
             catch (Exception ex)
             {
-                ConanOutputPane.Log($"  -> exception : {ex.Message}");
+                ConanOutputPane.Log(Loc.T($"  -> exception: {ex.Message}", $"  -> exception : {ex.Message}"));
                 return false;
             }
         }
@@ -624,8 +624,8 @@ echo No changes detected, skipping conan install...
                     if (completed != processExited.Task)
                     {
                         try { process.Kill(); } catch { /* already exited on its own */ }
-                        string timeoutError = $"'conan install' n'a pas répondu dans le délai imparti ({timeoutMs / 1000}s).";
-                        ConanOutputPane.Log($"  -> délai dépassé ({timeoutMs / 1000}s), processus arrêté.");
+                        string timeoutError = Loc.T($"'conan install' did not answer within the allotted time ({timeoutMs / 1000}s).", $"'conan install' n'a pas répondu dans le délai imparti ({timeoutMs / 1000}s).");
+                        ConanOutputPane.Log(Loc.T($"  -> timed out ({timeoutMs / 1000}s), process killed.", $"  -> délai dépassé ({timeoutMs / 1000}s), processus arrêté."));
                         return (false, timeoutError);
                     }
 
@@ -638,8 +638,8 @@ echo No changes detected, skipping conan install...
                     if (process.ExitCode != 0)
                     {
                         string error = stderrBuilder.Length > 0 ? stderrBuilder.ToString() : stdoutBuilder.ToString();
-                        error = string.IsNullOrWhiteSpace(error) ? $"conan a retourné le code {process.ExitCode}." : error.Trim();
-                        ConanOutputPane.Log($"  -> échec (code {process.ExitCode})");
+                        error = string.IsNullOrWhiteSpace(error) ? Loc.T($"conan returned code {process.ExitCode}.", $"conan a retourné le code {process.ExitCode}.") : error.Trim();
+                        ConanOutputPane.Log(Loc.T($"  -> failed (code {process.ExitCode})", $"  -> échec (code {process.ExitCode})"));
                         return (false, error);
                     }
 
@@ -649,7 +649,7 @@ echo No changes detected, skipping conan install...
             }
             catch (Exception ex)
             {
-                ConanOutputPane.Log($"  -> exception : {ex.Message}");
+                ConanOutputPane.Log(Loc.T($"  -> exception: {ex.Message}", $"  -> exception : {ex.Message}"));
                 return (false, ex.Message);
             }
         }

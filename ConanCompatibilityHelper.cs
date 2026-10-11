@@ -65,8 +65,8 @@ namespace conan_vs_extension
                 int jsonStart = stdout.IndexOf('{');
                 if (jsonStart < 0)
                 {
-                    result.Reason = FirstLine(stderr, $"conan a retourné le code {exitCode}.");
-                    ConanOutputPane.Log($"  -> vérification impossible : {result.Reason}");
+                    result.Reason = FirstLine(stderr, Loc.T($"conan returned code {exitCode}.", $"conan a retourné le code {exitCode}."));
+                    ConanOutputPane.Log(Loc.T($"  -> check impossible: {result.Reason}", $"  -> vérification impossible : {result.Reason}"));
                     return result;
                 }
 
@@ -78,7 +78,7 @@ namespace conan_vs_extension
 
                 if (node == null)
                 {
-                    result.Reason = FirstLine(stderr, "Paquet introuvable dans le graphe de dépendances.");
+                    result.Reason = FirstLine(stderr, Loc.T("Package not found in the dependency graph.", "Paquet introuvable dans le graphe de dépendances."));
                     return result;
                 }
 
@@ -94,7 +94,7 @@ namespace conan_vs_extension
                 if (binary.Equals("Invalid", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrEmpty(invalid))
                 {
                     result.State = CompatibilityState.Incompatible;
-                    result.Reason = string.IsNullOrWhiteSpace(invalid) ? "configuration refusée par la recette." : invalid.Trim();
+                    result.Reason = string.IsNullOrWhiteSpace(invalid) ? Loc.T("configuration refused by the recipe.", "configuration refusée par la recette.") : invalid.Trim();
                 }
                 else if (binary.Equals("Build", StringComparison.OrdinalIgnoreCase))
                 {
@@ -103,7 +103,7 @@ namespace conan_vs_extension
                 else if (binary.Equals("Missing", StringComparison.OrdinalIgnoreCase))
                 {
                     result.State = CompatibilityState.Incompatible;
-                    result.Reason = "aucun binaire n'existe pour ce profil et la compilation n'est pas possible.";
+                    result.Reason = Loc.T("no binary exists for this profile and building is not possible.", "aucun binaire n'existe pour ce profil et la compilation n'est pas possible.");
                 }
                 else if (binary.Length > 0)
                 {
@@ -116,7 +116,7 @@ namespace conan_vs_extension
             catch (Exception ex)
             {
                 result.Reason = ex.Message;
-                ConanOutputPane.Log($"  -> vérification impossible : {ex.Message}");
+                ConanOutputPane.Log(Loc.T($"  -> check impossible: {ex.Message}", $"  -> vérification impossible : {ex.Message}"));
             }
 
             return result;
@@ -143,7 +143,7 @@ namespace conan_vs_extension
                 int jsonStart = stdout.IndexOf('{');
                 if (jsonStart < 0)
                 {
-                    ConanOutputPane.Log($"  -> échec (code {exitCode}) : {FirstLine(stderr, string.Empty)}");
+                    ConanOutputPane.Log(Loc.T($"  -> failed (code {exitCode}): {FirstLine(stderr, string.Empty)}", $"  -> échec (code {exitCode}) : {FirstLine(stderr, string.Empty)}"));
                     return null;
                 }
 
@@ -152,7 +152,7 @@ namespace conan_vs_extension
                 // Unreachable remote: conan exits 0 with {"<remote>": {"error": "..."}}.
                 if (listing.Properties().Any(p => p.Value is JObject o && o["error"]?.Type == JTokenType.String))
                 {
-                    ConanOutputPane.Log("  -> remote injoignable : binaires publiés non listés.");
+                    ConanOutputPane.Log(Loc.T("  -> remote unreachable: published binaries not listed.", "  -> remote injoignable : binaires publiés non listés."));
                     return null;
                 }
 
@@ -166,7 +166,7 @@ namespace conan_vs_extension
                         if (settings == null)
                         {
                             // No settings in the package id: header-only / platform-independent package.
-                            lines.Add("indépendant du compilateur (header-only)");
+                            lines.Add(Loc.T("compiler-independent (header-only)", "indépendant du compilateur (header-only)"));
                             continue;
                         }
 
@@ -207,12 +207,12 @@ namespace conan_vs_extension
                     }
                 }
 
-                ConanOutputPane.Log($"  -> {lines.Count} configuration(s) de binaire.");
+                ConanOutputPane.Log(Loc.T($"  -> {lines.Count} binary configuration(s).", $"  -> {lines.Count} configuration(s) de binaire."));
                 return lines.ToList();
             }
             catch (Exception ex)
             {
-                ConanOutputPane.Log($"  -> exception : {ex.Message}");
+                ConanOutputPane.Log(Loc.T($"  -> exception: {ex.Message}", $"  -> exception : {ex.Message}"));
                 return null;
             }
         }

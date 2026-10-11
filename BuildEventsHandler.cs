@@ -229,7 +229,7 @@ namespace conan_vs_extension
             }
 
             pfCancelUpdate = 1;
-            ConanOutputPane.Log("Compilation reportée : une installation/mise à jour Conan est encore en cours. La compilation redémarrera automatiquement une fois celle-ci terminée.");
+            ConanOutputPane.Log(Loc.T("Build postponed: a Conan install/update is still running. The build will restart automatically once it has finished.", "Compilation reportée : une installation/mise à jour Conan est encore en cours. La compilation redémarrera automatiquement une fois celle-ci terminée."));
 
             _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
             {
@@ -248,7 +248,7 @@ namespace conan_vs_extension
 
                 try
                 {
-                    ConanOutputPane.Log("Installation Conan terminée, relance de la compilation...");
+                    ConanOutputPane.Log(Loc.T("Conan install finished, restarting the build...", "Installation Conan terminée, relance de la compilation..."));
                     _dte.ExecuteCommand("Build.BuildSolution");
                 }
                 catch (Exception ex)

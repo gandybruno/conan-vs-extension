@@ -210,7 +210,7 @@
                                     </Grid.ColumnDefinitions>
 
                                     <Grid Grid.Column="0">
-                                        <TextBlock x:Name="WatermarkText" Text="Rechercher (Ctrl+L)"
+                                        <TextBlock x:Name="WatermarkText" Text="{local:Loc 'Search (Ctrl+L)', 'Rechercher (Ctrl+L)'}"
                                                    Opacity="0.5" VerticalAlignment="Center"
                                                    Margin="{TemplateBinding Padding}"
                                                    IsHitTestVisible="False" Visibility="Collapsed"/>
@@ -224,7 +224,7 @@
                                     </Grid>
 
                                     <Button x:Name="SearchIconButton" Grid.Column="1" Click="SearchIconButton_Click"
-                                            ToolTip="Rechercher" Background="Transparent" BorderThickness="0"
+                                            ToolTip="{local:Loc 'Search', 'Rechercher'}" Background="Transparent" BorderThickness="0"
                                             Cursor="Hand" Focusable="False">
                                         <Path Data="M15.5,14h-0.79l-0.28-0.27C15.41,12.59,16,11.11,16,9.5A6.5,6.5,0,1,0,9.5,16c1.61,0,3.09-0.59,4.23-1.57l0.27,0.28v0.79l5,4.99L20.49,19L15.5,14z M9.5,14C7.01,14,5,11.99,5,9.5S7.01,5,9.5,5S14,7.01,14,9.5S11.99,14,9.5,14z"
                                               Fill="{TemplateBinding Foreground}" Stretch="Uniform" Width="13" Height="13"/>
@@ -290,11 +290,11 @@
 
             <StackPanel Grid.Column="0" Orientation="Horizontal">
                 <StackPanel Orientation="Vertical">
-                    <Button x:Name="BrowseTabButton" Content="Parcourir" Click="BrowseTabButton_Click" Style="{StaticResource TabButtonStyle}"/>
+                    <Button x:Name="BrowseTabButton" Content="{local:Loc 'Browse', 'Parcourir'}" Click="BrowseTabButton_Click" Style="{StaticResource TabButtonStyle}"/>
                     <Border x:Name="BrowseTabUnderline" Height="2" Background="{DynamicResource {x:Static vsshell:VsBrushes.HighlightKey}}" Margin="4,4,20,0"/>
                 </StackPanel>
                 <StackPanel Orientation="Vertical">
-                    <Button x:Name="InstalledTabButton" Content="Installé" Click="InstalledTabButton_Click" Style="{StaticResource TabButtonStyle}"/>
+                    <Button x:Name="InstalledTabButton" Content="{local:Loc 'Installed', 'Installé'}" Click="InstalledTabButton_Click" Style="{StaticResource TabButtonStyle}"/>
                     <Border x:Name="InstalledTabUnderline" Height="2" Background="{DynamicResource {x:Static vsshell:VsBrushes.HighlightKey}}" Margin="4,4,20,0"/>
                 </StackPanel>
             </StackPanel>
@@ -302,7 +302,7 @@
             <TextBlock x:Name="HeaderTitleTextBlock" Grid.Column="1" FontSize="19" FontWeight="Normal"
                        VerticalAlignment="Center" HorizontalAlignment="Right"
                        Foreground="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"
-                       Text="Gestionnaire de packages Conan"/>
+                       Text="{local:Loc 'Conan Package Manager', 'Gestionnaire de packages Conan'}"/>
         </Grid>
 
         <!-- Line 2: search box aligned with the package list column below it, source + settings/refresh
@@ -326,7 +326,7 @@
                 <ComboBox x:Name="LibrarySearchComboBox" Grid.Column="0" Style="{StaticResource SearchComboBoxStyle}"
                           FontSize="13" KeyDown="LibrarySearchComboBox_KeyDown"/>
 
-                <Button x:Name="UpdateButton" Grid.Column="1" ToolTip="Actualiser la liste des packages" Click="Update_Click"
+                <Button x:Name="UpdateButton" Grid.Column="1" ToolTip="{local:Loc 'Refresh the package list', 'Actualiser la liste des packages'}" Click="Update_Click"
                         Style="{StaticResource ThemedButtonStyle}" BorderThickness="0" Background="{x:Null}"
                         Padding="4" Margin="6,0,0,0">
                     <Image Source="{StaticResource ic_fluent_arrow_sync_24_regularDrawingImage}" Stretch="Fill" Width="16" Height="16"/>
@@ -334,12 +334,12 @@
             </Grid>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <TextBlock Text="Source :" VerticalAlignment="Center" Opacity="0.7" FontSize="12" Margin="0,0,6,0"/>
+                <TextBlock Text="{local:Loc 'Source:', 'Source :'}" VerticalAlignment="Center" Opacity="0.7" FontSize="12" Margin="0,0,6,0"/>
                 <ComboBox x:Name="PackageSourceComboBox" VerticalAlignment="Center" Width="170" FontSize="12"
                           Style="{StaticResource ThemedComboBoxStyle}"
                           SelectionChanged="PackageSourceComboBox_SelectionChanged"
                           Margin="0,0,10,0"/>
-                <Button x:Name="ConfigureConanButton" ToolTip="Configurer Conan" Click="Configuration_Click"
+                <Button x:Name="ConfigureConanButton" ToolTip="{local:Loc 'Configure Conan', 'Configurer Conan'}" Click="Configuration_Click"
                         Style="{StaticResource ThemedButtonStyle}" BorderThickness="0" Background="{x:Null}" Padding="4">
                     <Image Source="{StaticResource ic_fluent_settings_24_regularDrawingImage}" Stretch="Fill" Width="16" Height="16"/>
                 </Button>
@@ -349,10 +349,8 @@
         <Separator Grid.Row="2" Margin="0,0,0,0"/>
 
         <StackPanel x:Name="UnsupportedProjectType" Visibility="Collapsed" Grid.Row="3" Margin="0,10,0,0">
-            <TextBlock Margin="0,0,0,5" FontSize="16" FontWeight="Bold">Type de projet non pris en charge</TextBlock>
-            <TextBlock TextWrapping="Wrap">
-                Ce projet n'est pas un projet msbuild pris en charge par l'extension Conan.
-            </TextBlock>
+            <TextBlock Margin="0,0,0,5" FontSize="16" FontWeight="Bold" Text="{local:Loc 'Unsupported project type', 'Type de projet non pris en charge'}"/>
+            <TextBlock TextWrapping="Wrap" Text="{local:Loc 'This project is not an MSBuild project supported by the Conan extension.', 'Ce projet n\'est pas un projet msbuild pris en charge par l\'extension Conan.'}"/>
         </StackPanel>
 
         <!-- Shown whenever the last refresh could not reach the selected remote (offline, DNS,
@@ -362,7 +360,7 @@
                 Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"
                 BorderBrush="{DynamicResource {x:Static vsshell:VsBrushes.HighlightKey}}" BorderThickness="1">
             <TextBlock TextWrapping="Wrap" FontWeight="SemiBold">
-                <Run Text="⚠ Remote injoignable (hors ligne ?) — liste affichée depuis le cache Conan local (paquets déjà téléchargés), pas depuis le remote."/>
+                <Run Text="{local:Loc '⚠ Remote unreachable (offline?) — list shown from the local Conan cache (already downloaded packages), not from the remote.', '⚠ Remote injoignable (hors ligne ?) — liste affichée depuis le cache Conan local (paquets déjà téléchargés), pas depuis le remote.'}"/>
             </TextBlock>
         </Border>
 
@@ -400,7 +398,7 @@
                         BorderThickness="1" BorderBrush="{DynamicResource {x:Static vsshell:VsBrushes.ActiveBorderKey}}">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                         <ProgressBar IsIndeterminate="True" Width="140" Height="4" Margin="0,0,0,10"/>
-                        <TextBlock Text="Chargement des packages..." HorizontalAlignment="Center" Opacity="0.7"/>
+                        <TextBlock Text="{local:Loc 'Loading packages...', 'Chargement des packages...'}" HorizontalAlignment="Center" Opacity="0.7"/>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -419,12 +417,12 @@
                     Panel.ZIndex="10">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="360">
                     <ProgressBar IsIndeterminate="True" Width="220" Height="4" Margin="0,0,0,14"/>
-                    <TextBlock x:Name="InstallOperationStatusText" Text="Installation en cours..."
+                    <TextBlock x:Name="InstallOperationStatusText" Text="{local:Loc 'Installing...', 'Installation en cours...'}"
                                HorizontalAlignment="Center" TextWrapping="Wrap" FontWeight="SemiBold" TextAlignment="Center"/>
-                    <TextBlock Text="Cela peut prendre plusieurs minutes si Conan doit compiler un binaire depuis les sources."
+                    <TextBlock Text="{local:Loc 'This can take several minutes if Conan has to build a binary from source.', 'Cela peut prendre plusieurs minutes si Conan doit compiler un binaire depuis les sources.'}"
                                HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
                                Opacity="0.7" FontSize="11" Margin="0,6,0,0"/>
-                    <TextBlock Text="Le détail des commandes s'affiche automatiquement dans la fenêtre Output (onglet Conan)."
+                    <TextBlock Text="{local:Loc 'Command details are shown automatically in the Output window (Conan pane).', 'Le détail des commandes s\'affiche automatiquement dans la fenêtre Output (onglet Conan).'}"
                                HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Opacity="0.7" FontSize="11" Margin="0,10,0,0"/>
                 </StackPanel>
             </Border>
@@ -446,16 +444,16 @@
 
                 <StackPanel Grid.Row="1" Orientation="Vertical" Margin="0,0,0,10">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Version :" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="{local:Loc 'Version:', 'Version :'}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <ComboBox x:Name="VersionsComboBox" Width="200" VerticalAlignment="Center" Style="{StaticResource ThemedComboBoxStyle}" SelectionChanged="VersionsComboBox_SelectionChanged"/>
-                    <Button x:Name="InstallButton" Content="Installer" Margin="12,0,0,0" Padding="14,4" Click="InstallButton_Click" VerticalAlignment="Center" Style="{StaticResource ThemedButtonStyle}"/>
-                    <Button x:Name="RemoveButton" Content="Retirer du projet" Margin="12,0,0,0" Padding="14,4" Click="RemoveButton_Click" VerticalAlignment="Center" ToolTip="Retire la dépendance de ce projet (conandata.yml). Le paquet reste dans le cache Conan." Style="{StaticResource ThemedButtonStyle}"/>
+                    <Button x:Name="InstallButton" Content="{local:Loc 'Install', 'Installer'}" Margin="12,0,0,0" Padding="14,4" Click="InstallButton_Click" VerticalAlignment="Center" Style="{StaticResource ThemedButtonStyle}"/>
+                    <Button x:Name="RemoveButton" Content="{local:Loc 'Remove from project', 'Retirer du projet'}" Margin="12,0,0,0" Padding="14,4" Click="RemoveButton_Click" VerticalAlignment="Center" ToolTip="{local:Loc 'Removes the dependency from this project (conandata.yml). The package stays in the Conan cache.', 'Retire la dépendance de ce projet (conandata.yml). Le paquet reste dans le cache Conan.'}" Style="{StaticResource ThemedButtonStyle}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                    <CheckBox x:Name="EditableCheckBox" Content="Éditable (sources locales)" Style="{StaticResource ThemedCheckBoxStyle}" VerticalAlignment="Center" Click="EditableCheckBox_Click"
-                              ToolTip="Utiliser les sources locales de cette bibliothèque (conan editable) pour la modifier et la déboguer. Actif pour tous les projets qui utilisent cette version."/>
-                    <Button x:Name="EditableFolderButton" Content="Dossier..." Margin="8,0,0,0" Padding="10,4" Click="EditableFolderButton_Click" VerticalAlignment="Center" Style="{StaticResource ThemedButtonStyle}"
-                            ToolTip="Changer le dossier des sources de cette bibliothèque éditable."/>
+                    <CheckBox x:Name="EditableCheckBox" Content="{local:Loc 'Editable (local sources)', 'Éditable (sources locales)'}" Style="{StaticResource ThemedCheckBoxStyle}" VerticalAlignment="Center" Click="EditableCheckBox_Click"
+                              ToolTip="{local:Loc 'Use this library\'s local sources (conan editable) to modify and debug it. Applies to every project that uses this version.', 'Utiliser les sources locales de cette bibliothèque (conan editable) pour la modifier et la déboguer. Actif pour tous les projets qui utilisent cette version.'}"/>
+                    <Button x:Name="EditableFolderButton" Content="{local:Loc 'Folder...', 'Dossier...'}" Margin="8,0,0,0" Padding="10,4" Click="EditableFolderButton_Click" VerticalAlignment="Center" Style="{StaticResource ThemedButtonStyle}"
+                            ToolTip="{local:Loc 'Change the sources folder of this editable library.', 'Changer le dossier des sources de cette bibliothèque éditable.'}"/>
                 </StackPanel>
                 </StackPanel>
 
@@ -467,26 +465,26 @@
 
                 <Separator Grid.Row="3" Margin="0,0,0,10"/>
 
-                <TextBlock Grid.Row="4" Text="Détails du package" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
+                <TextBlock Grid.Row="4" Text="{local:Loc 'Package details', 'Détails du package'}" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
 
                 <StackPanel Grid.Row="5">
-                    <TextBlock x:Name="MetadataLoadingTextBlock" Text="Chargement des détails..." Opacity="0.7" Margin="0,0,0,10" Visibility="Collapsed"/>
-                    <TextBlock x:Name="MetadataUnavailableTextBlock" Text="Détails indisponibles pour ce package (voir la fenêtre Output &gt; Debug pour le détail)." Opacity="0.7" TextWrapping="Wrap" Margin="0,0,0,10" Visibility="Collapsed"/>
+                    <TextBlock x:Name="MetadataLoadingTextBlock" Text="{local:Loc 'Loading details...', 'Chargement des détails...'}" Opacity="0.7" Margin="0,0,0,10" Visibility="Collapsed"/>
+                    <TextBlock x:Name="MetadataUnavailableTextBlock" Text="{local:Loc 'Details unavailable for this package (see the Output > Debug window for details).', 'Détails indisponibles pour ce package (voir la fenêtre Output > Debug pour le détail).'}" Opacity="0.7" TextWrapping="Wrap" Margin="0,0,0,10" Visibility="Collapsed"/>
 
                     <TextBlock x:Name="PackageDescriptionTextBlock" TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed"/>
 
                     <StackPanel x:Name="PackageLicensePanel" Orientation="Horizontal" Margin="0,0,0,6" Visibility="Collapsed">
-                        <TextBlock Text="Licence : " FontWeight="SemiBold"/>
+                        <TextBlock Text="{local:Loc 'License: ', 'Licence : '}" FontWeight="SemiBold"/>
                         <TextBlock x:Name="PackageLicenseTextBlock"/>
                     </StackPanel>
 
                     <StackPanel x:Name="PackageAuthorPanel" Orientation="Horizontal" Margin="0,0,0,6" Visibility="Collapsed">
-                        <TextBlock Text="Auteur : " FontWeight="SemiBold"/>
+                        <TextBlock Text="{local:Loc 'Author: ', 'Auteur : '}" FontWeight="SemiBold"/>
                         <TextBlock x:Name="PackageAuthorTextBlock"/>
                     </StackPanel>
 
                     <StackPanel x:Name="PackageTopicsPanel" Orientation="Horizontal" Margin="0,0,0,10" Visibility="Collapsed">
-                        <TextBlock Text="Tags : " FontWeight="SemiBold"/>
+                        <TextBlock Text="{local:Loc 'Tags: ', 'Tags : '}" FontWeight="SemiBold"/>
                         <TextBlock x:Name="PackageTopicsTextBlock" TextWrapping="Wrap"/>
                     </StackPanel>
 
@@ -504,7 +502,7 @@
                 </StackPanel>
             </Grid>
 
-            <TextBlock x:Name="NoSelectionTextBlock" Grid.Column="2" Text="Sélectionnez un package dans la liste pour voir ses détails."
+            <TextBlock x:Name="NoSelectionTextBlock" Grid.Column="2" Text="{local:Loc 'Select a package in the list to see its details.', 'Sélectionnez un package dans la liste pour voir ses détails.'}"
                        Opacity="0.7" Margin="14,8,0,0" TextWrapping="Wrap"/>
         </Grid>
     </Grid>

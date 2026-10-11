@@ -104,7 +104,7 @@ namespace conan_vs_extension
             {
                 Microsoft.VisualStudio.Shell.VsShellUtilities.ShowMessageBox(
                     this.package,
-                    "Sélectionnez un projet dans l'Explorateur de solutions (ou définissez un projet de démarrage) avant d'ouvrir le gestionnaire de packages Conan.",
+                    Loc.T("Select a project in Solution Explorer (or set a startup project) before opening the Conan package manager.", "Sélectionnez un projet dans l'Explorateur de solutions (ou définissez un projet de démarrage) avant d'ouvrir le gestionnaire de packages Conan."),
                     "Conan C/C++ Package Manager",
                     OLEMSGICON.OLEMSGICON_WARNING,
                     OLEMSGBUTTON.OLEMSGBUTTON_OK,

@@ -116,8 +116,8 @@ namespace conan_vs_extension
             EnableDisableButton.IsEnabled = hasSelection;
             EditSourceButton.IsEnabled = hasSelection;
             RemoveButton.IsEnabled = hasSelection;
-            EnableDisableButton.Content = hasSelection && !_selected.Enabled ? "Activer" : "Désactiver";
-            LoginButton.Content = hasSelection && !string.IsNullOrEmpty(_selected.User) ? "Se déconnecter" : "Se connecter...";
+            EnableDisableButton.Content = hasSelection && !_selected.Enabled ? Loc.T("Enable", "Activer") : Loc.T("Disable", "Désactiver");
+            LoginButton.Content = hasSelection && !string.IsNullOrEmpty(_selected.User) ? Loc.T("Log out", "Se déconnecter") : Loc.T("Log in...", "Se connecter...");
         }
 
         /**
@@ -142,7 +142,7 @@ namespace conan_vs_extension
             if (!string.IsNullOrEmpty(_selected.User))
             {
                 MessageBoxResult confirmLogout = MessageBox.Show(
-                    $"Se déconnecter du remote '{_selected.Name}' (utilisateur '{_selected.User}') ?",
+                    Loc.T($"Log out of remote '{_selected.Name}' (user '{_selected.User}')?", $"Se déconnecter du remote '{_selected.Name}' (utilisateur '{_selected.User}') ?"),
                     "Conan C/C++ Package Manager", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
                 if (confirmLogout != MessageBoxResult.Yes)
@@ -152,13 +152,13 @@ namespace conan_vs_extension
 
                 bool logoutSuccess;
             string logoutError;
-            using (BusyIndicator.Show(this, "Op\u00e9ration Conan en cours..."))
+            using (BusyIndicator.Show(this, Loc.T("Conan operation in progress...", "Op\u00e9ration Conan en cours...")))
             {
                 (logoutSuccess, logoutError) = await ConanRemoteHelper.LogoutRemoteAsync(_selected.Name);
             }
                 if (!logoutSuccess)
                 {
-                    MessageBox.Show($"Impossible de se déconnecter de '{_selected.Name}' :\n{logoutError}", "Conan C/C++ Package Manager",
+                    MessageBox.Show(Loc.T($"Could not log out of '{_selected.Name}':\n{logoutError}", $"Impossible de se déconnecter de '{_selected.Name}' :\n{logoutError}"), "Conan C/C++ Package Manager",
                         MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
@@ -168,7 +168,7 @@ namespace conan_vs_extension
             }
 
             (string username, string password)? credentials = CredentialsDialog.Show(
-                $"Authentification sur le remote '{_selected.Name}' :", _selected.Name);
+                Loc.T($"Authentication on remote '{_selected.Name}':", $"Authentification sur le remote '{_selected.Name}' :"), _selected.Name);
 
             if (credentials == null)
             {
@@ -177,13 +177,13 @@ namespace conan_vs_extension
 
             bool loginSuccess;
             string loginError;
-            using (BusyIndicator.Show(this, "Authentification en cours (peut prendre quelques secondes)..."))
+            using (BusyIndicator.Show(this, Loc.T("Authenticating (this can take a few seconds)...", "Authentification en cours (peut prendre quelques secondes)...")))
             {
                 (loginSuccess, loginError) = await ConanRemoteHelper.LoginRemoteAsync(_selected.Name, credentials.Value.username, credentials.Value.password);
             }
             if (!loginSuccess)
             {
-                MessageBox.Show($"Authentification impossible sur '{_selected.Name}' :\n{loginError}", "Conan C/C++ Package Manager",
+                MessageBox.Show(Loc.T($"Authentication failed on '{_selected.Name}':\n{loginError}", $"Authentification impossible sur '{_selected.Name}' :\n{loginError}"), "Conan C/C++ Package Manager",
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
@@ -209,14 +209,14 @@ namespace conan_vs_extension
 
             bool success;
             string error;
-            using (BusyIndicator.Show(this, "Ajout du remote en cours..."))
+            using (BusyIndicator.Show(this, Loc.T("Adding the remote...", "Ajout du remote en cours...")))
             {
                 (success, error) = await ConanRemoteHelper.AddRemoteAsync(info.Name, info.Url, info.VerifySsl);
             }
 
             if (!success)
             {
-                MessageBox.Show($"Impossible d'ajouter le remote '{info.Name}' :\n{error}", "Conan C/C++ Package Manager",
+                MessageBox.Show(Loc.T($"Could not add the remote '{info.Name}':\n{error}", $"Impossible d'ajouter le remote '{info.Name}' :\n{error}"), "Conan C/C++ Package Manager",
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
@@ -230,13 +230,13 @@ namespace conan_vs_extension
                 {
                     bool loginSuccess;
             string loginError;
-            using (BusyIndicator.Show(this, "Authentification en cours (peut prendre quelques secondes)..."))
+            using (BusyIndicator.Show(this, Loc.T("Authenticating (this can take a few seconds)...", "Authentification en cours (peut prendre quelques secondes)...")))
             {
                 (loginSuccess, loginError) = await ConanRemoteHelper.LoginRemoteAsync(info.Name, info.Username, info.Token);
             }
                     if (!loginSuccess)
                     {
-                        MessageBox.Show($"Le remote '{info.Name}' a été ajouté mais l'authentification a échoué :\n{loginError}",
+                        MessageBox.Show(Loc.T($"The remote '{info.Name}' was added but authentication failed:\n{loginError}", $"Le remote '{info.Name}' a été ajouté mais l'authentification a échoué :\n{loginError}"),
                             "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
                     }
                 }
@@ -260,7 +260,7 @@ namespace conan_vs_extension
             }
 
             string input = MessageBoxWithInput.Show(
-                $"Nouvelle source (URL) pour le remote '{_selected.Name}' :",
+                Loc.T($"New source (URL) for remote '{_selected.Name}':", $"Nouvelle source (URL) pour le remote '{_selected.Name}' :"),
                 "Conan C/C++ Package Manager",
                 _selected.Url);
 
@@ -271,14 +271,14 @@ namespace conan_vs_extension
 
             bool success;
             string error;
-            using (BusyIndicator.Show(this, "Op\u00e9ration Conan en cours..."))
+            using (BusyIndicator.Show(this, Loc.T("Conan operation in progress...", "Op\u00e9ration Conan en cours...")))
             {
                 (success, error) = await ConanRemoteHelper.UpdateRemoteUrlAsync(_selected.Name, input.Trim(), _selected.VerifySsl);
             }
 
             if (!success)
             {
-                MessageBox.Show($"Impossible de mettre à jour le remote '{_selected.Name}' :\n{error}", "Conan C/C++ Package Manager",
+                MessageBox.Show(Loc.T($"Could not update the remote '{_selected.Name}':\n{error}", $"Impossible de mettre à jour le remote '{_selected.Name}' :\n{error}"), "Conan C/C++ Package Manager",
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
@@ -302,7 +302,8 @@ namespace conan_vs_extension
             }
 
             MessageBoxResult confirm = MessageBox.Show(
-                $"Supprimer le remote '{_selected.Name}' ? Cette action ne supprime que la configuration du remote, pas les packages déjà installés localement.",
+                Loc.T($"Remove the remote '{_selected.Name}'? This only removes the remote's configuration, not the packages already installed locally.",
+                      $"Supprimer le remote '{_selected.Name}' ? Cette action ne supprime que la configuration du remote, pas les packages déjà installés localement."),
                 "Conan C/C++ Package Manager", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
             if (confirm != MessageBoxResult.Yes)
@@ -312,14 +313,14 @@ namespace conan_vs_extension
 
             bool success;
             string error;
-            using (BusyIndicator.Show(this, "Op\u00e9ration Conan en cours..."))
+            using (BusyIndicator.Show(this, Loc.T("Conan operation in progress...", "Op\u00e9ration Conan en cours...")))
             {
                 (success, error) = await ConanRemoteHelper.RemoveRemoteAsync(_selected.Name);
             }
 
             if (!success)
             {
-                MessageBox.Show($"Impossible de supprimer le remote '{_selected.Name}' :\n{error}", "Conan C/C++ Package Manager",
+                MessageBox.Show(Loc.T($"Could not remove the remote '{_selected.Name}':\n{error}", $"Impossible de supprimer le remote '{_selected.Name}' :\n{error}"), "Conan C/C++ Package Manager",
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
@@ -340,9 +341,12 @@ namespace conan_vs_extension
         private async Task CleanCacheButtonClickAsync()
         {
             MessageBoxResult answer = MessageBox.Show(
-                "Supprimer tous les paquets du cache local Conan ?\n\n" +
-                "Cela concerne tous les projets de cette machine : les paquets seront retéléchargés " +
-                "(ou recompilés) au prochain 'conan install'. Les paquets éditables ne sont pas touchés.",
+                Loc.T("Remove all packages from the local Conan cache?\n\n" +
+                      "This affects every project on this machine: packages will be downloaded " +
+                      "(or rebuilt) again on the next 'conan install'. Editable packages are not touched.",
+                      "Supprimer tous les paquets du cache local Conan ?\n\n" +
+                      "Cela concerne tous les projets de cette machine : les paquets seront retéléchargés " +
+                      "(ou recompilés) au prochain 'conan install'. Les paquets éditables ne sont pas touchés."),
                 "Conan C/C++ Package Manager", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
             if (answer != MessageBoxResult.Yes)
             {
@@ -351,18 +355,18 @@ namespace conan_vs_extension
 
             bool success;
             string error;
-            using (BusyIndicator.Show(this, "Nettoyage du cache en cours..."))
+            using (BusyIndicator.Show(this, Loc.T("Cleaning the cache...", "Nettoyage du cache en cours...")))
             {
                 (success, error) = await ConanRemoteHelper.CleanLocalCacheAsync();
             }
 
             if (success)
             {
-                MessageBox.Show("Cache Conan nettoyé.", "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(Loc.T("Conan cache cleaned.", "Cache Conan nettoyé."), "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
-                MessageBox.Show($"Impossible de nettoyer le cache :\n{error}", "Conan C/C++ Package Manager",
+                MessageBox.Show(Loc.T($"Could not clean the cache:\n{error}", $"Impossible de nettoyer le cache :\n{error}"), "Conan C/C++ Package Manager",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -384,7 +388,7 @@ namespace conan_vs_extension
 
             bool success;
             string error;
-            using (BusyIndicator.Show(this, "Op\u00e9ration Conan en cours..."))
+            using (BusyIndicator.Show(this, Loc.T("Conan operation in progress...", "Op\u00e9ration Conan en cours...")))
             {
                 (success, error) = _selected.Enabled
                 ? await ConanRemoteHelper.DisableRemoteAsync(_selected.Name)
@@ -393,7 +397,7 @@ namespace conan_vs_extension
 
             if (!success)
             {
-                MessageBox.Show($"Opération impossible sur '{_selected.Name}' :\n{error}", "Conan C/C++ Package Manager",
+                MessageBox.Show(Loc.T($"Operation failed on '{_selected.Name}':\n{error}", $"Opération impossible sur '{_selected.Name}' :\n{error}"), "Conan C/C++ Package Manager",
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
@@ -483,7 +487,7 @@ namespace conan_vs_extension
         {
             var form = new System.Windows.Forms.Form
             {
-                Text = "Ajouter un remote Conan",
+                Text = Loc.T("Add a Conan remote", "Ajouter un remote Conan"),
                 StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen,
                 FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog,
                 MaximizeBox = false,
@@ -491,25 +495,25 @@ namespace conan_vs_extension
                 ShowInTaskbar = false
             };
 
-            var typeLabel = new System.Windows.Forms.Label { Text = "Type :", Left = 12, Top = 15, AutoSize = true };
+            var typeLabel = new System.Windows.Forms.Label { Text = Loc.T("Type:", "Type :"), Left = 12, Top = 15, AutoSize = true };
             var typeCombo = new System.Windows.Forms.ComboBox { Left = 190, Top = 12, Width = 340, DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList };
-            typeCombo.Items.Add("Remote Conan (URL)");
+            typeCombo.Items.Add(Loc.T("Conan remote (URL)", "Remote Conan (URL)"));
             typeCombo.Items.Add("GitLab Package Registry");
             typeCombo.SelectedIndex = 0;
 
-            var nameLabel = new System.Windows.Forms.Label { Text = "Nom :", Left = 12, Top = 48, AutoSize = true };
+            var nameLabel = new System.Windows.Forms.Label { Text = Loc.T("Name:", "Nom :"), Left = 12, Top = 48, AutoSize = true };
             var nameBox = new System.Windows.Forms.TextBox { Left = 190, Top = 45, Width = 340 };
 
-            var urlLabel = new System.Windows.Forms.Label { Text = "Source (URL) :", Left = 12, Top = 81, AutoSize = true };
+            var urlLabel = new System.Windows.Forms.Label { Text = Loc.T("Source (URL):", "Source (URL) :"), Left = 12, Top = 81, AutoSize = true };
             var urlBox = new System.Windows.Forms.TextBox { Left = 190, Top = 78, Width = 340 };
 
-            var projectLabel = new System.Windows.Forms.Label { Text = "ID ou chemin du projet :", Left = 12, Top = 114, AutoSize = true };
+            var projectLabel = new System.Windows.Forms.Label { Text = Loc.T("Project ID or path:", "ID ou chemin du projet :"), Left = 12, Top = 114, AutoSize = true };
             var projectBox = new System.Windows.Forms.TextBox { Left = 190, Top = 111, Width = 340 };
 
-            var userLabel = new System.Windows.Forms.Label { Text = "Utilisateur :", Left = 12, Top = 147, AutoSize = true };
+            var userLabel = new System.Windows.Forms.Label { Text = Loc.T("User:", "Utilisateur :"), Left = 12, Top = 147, AutoSize = true };
             var userBox = new System.Windows.Forms.TextBox { Left = 190, Top = 144, Width = 340 };
 
-            var tokenLabel = new System.Windows.Forms.Label { Text = "Token d'accès :", Left = 12, Top = 180, AutoSize = true };
+            var tokenLabel = new System.Windows.Forms.Label { Text = Loc.T("Access token:", "Token d'accès :"), Left = 12, Top = 180, AutoSize = true };
             var tokenBox = new System.Windows.Forms.TextBox { Left = 190, Top = 177, Width = 340, UseSystemPasswordChar = true };
 
             var hintLabel = new System.Windows.Forms.Label
@@ -519,19 +523,21 @@ namespace conan_vs_extension
                 Width = 518,
                 Height = 46,
                 ForeColor = System.Drawing.SystemColors.GrayText,
-                Text = "Token GitLab (personnel, de projet ou de déploiement) avec les scopes read_api et read_package_registry. " +
-                       "Laissez l'utilisateur et le token vides pour un projet public."
+                Text = Loc.T("GitLab token (personal, project or deploy) with the read_api and read_package_registry scopes. " +
+                             "Leave the user and token empty for a public project.",
+                             "Token GitLab (personnel, de projet ou de déploiement) avec les scopes read_api et read_package_registry. " +
+                             "Laissez l'utilisateur et le token vides pour un projet public.")
             };
 
-            var sslBox = new System.Windows.Forms.CheckBox { Text = "Vérifier SSL", Left = 190, Checked = true, AutoSize = true };
-            var okButton = new System.Windows.Forms.Button { Text = "Ajouter", Width = 90, DialogResult = System.Windows.Forms.DialogResult.OK };
-            var cancelButton = new System.Windows.Forms.Button { Text = "Annuler", Width = 90, DialogResult = System.Windows.Forms.DialogResult.Cancel };
+            var sslBox = new System.Windows.Forms.CheckBox { Text = Loc.T("Verify SSL", "Vérifier SSL"), Left = 190, Checked = true, AutoSize = true };
+            var okButton = new System.Windows.Forms.Button { Text = Loc.T("Add", "Ajouter"), Width = 90, DialogResult = System.Windows.Forms.DialogResult.OK };
+            var cancelButton = new System.Windows.Forms.Button { Text = Loc.T("Cancel", "Annuler"), Width = 90, DialogResult = System.Windows.Forms.DialogResult.Cancel };
 
             void UpdateLayout()
             {
                 bool gitlab = typeCombo.SelectedIndex == 1;
 
-                urlLabel.Text = gitlab ? "Serveur GitLab :" : "Source (URL) :";
+                urlLabel.Text = gitlab ? Loc.T("GitLab server:", "Serveur GitLab :") : Loc.T("Source (URL):", "Source (URL) :");
                 if (gitlab && string.IsNullOrWhiteSpace(urlBox.Text))
                 {
                     urlBox.Text = "https://gitlab.com";
@@ -579,7 +585,8 @@ namespace conan_vs_extension
                 if (missing)
                 {
                     System.Windows.Forms.MessageBox.Show(
-                        gitlab ? "Le nom, le serveur et le projet GitLab sont obligatoires." : "Le nom et la source (URL) sont obligatoires.",
+                        gitlab ? Loc.T("The name, server and GitLab project are required.", "Le nom, le serveur et le projet GitLab sont obligatoires.")
+                               : Loc.T("The name and the source (URL) are required.", "Le nom et la source (URL) sont obligatoires."),
                         "Conan C/C++ Package Manager", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Warning);
                     e.Cancel = true;
                 }
@@ -640,12 +647,12 @@ namespace conan_vs_extension
                 Left = 12,
                 Top = 10
             };
-            var usernameLabel = new System.Windows.Forms.Label { Text = "Utilisateur :", Left = 12, Top = 48, AutoSize = true };
+            var usernameLabel = new System.Windows.Forms.Label { Text = Loc.T("User:", "Utilisateur :"), Left = 12, Top = 48, AutoSize = true };
             var usernameTextBox = new System.Windows.Forms.TextBox { Left = 110, Top = 45, Width = 210, Text = defaultUsername ?? string.Empty };
-            var passwordLabel = new System.Windows.Forms.Label { Text = "Mot de passe :", Left = 12, Top = 78, AutoSize = true };
+            var passwordLabel = new System.Windows.Forms.Label { Text = Loc.T("Password:", "Mot de passe :"), Left = 12, Top = 78, AutoSize = true };
             var passwordTextBox = new System.Windows.Forms.TextBox { Left = 110, Top = 75, Width = 210, UseSystemPasswordChar = true };
-            var okButton = new System.Windows.Forms.Button { Text = "Se connecter", Left = 145, Width = 90, Top = 115, DialogResult = System.Windows.Forms.DialogResult.OK };
-            var cancelButton = new System.Windows.Forms.Button { Text = "Annuler", Left = 240, Width = 80, Top = 115, DialogResult = System.Windows.Forms.DialogResult.Cancel };
+            var okButton = new System.Windows.Forms.Button { Text = Loc.T("Log in", "Se connecter"), Left = 145, Width = 90, Top = 115, DialogResult = System.Windows.Forms.DialogResult.OK };
+            var cancelButton = new System.Windows.Forms.Button { Text = Loc.T("Cancel", "Annuler"), Left = 240, Width = 80, Top = 115, DialogResult = System.Windows.Forms.DialogResult.Cancel };
 
             form.Controls.Add(messageLabel);
             form.Controls.Add(usernameLabel);

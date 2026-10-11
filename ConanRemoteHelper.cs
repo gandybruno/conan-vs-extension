@@ -177,7 +177,7 @@ namespace conan_vs_extension
 
                 if (exitCode != 0)
                 {
-                    ConanOutputPane.Log($"  -> échec (code {exitCode}) : {(string.IsNullOrWhiteSpace(stderr) ? output : stderr)}");
+                    ConanOutputPane.Log(Loc.T($"  -> failed (code {exitCode}): {(string.IsNullOrWhiteSpace(stderr) ? output : stderr)}", $"  -> échec (code {exitCode}) : {(string.IsNullOrWhiteSpace(stderr) ? output : stderr)}"));
                 }
 
                 int jsonStart = output.IndexOf('{');
@@ -199,7 +199,7 @@ namespace conan_vs_extension
                 {
                     string error = (string)packagesObject["error"];
                     int firstLineEnd = error.IndexOfAny(new[] { '\r', '\n' });
-                    ConanOutputPane.Log($"  -> remote injoignable ou en erreur : {(firstLineEnd > 0 ? error.Substring(0, firstLineEnd) : error)}");
+                    ConanOutputPane.Log(Loc.T($"  -> remote unreachable or in error: {(firstLineEnd > 0 ? error.Substring(0, firstLineEnd) : error)}", $"  -> remote injoignable ou en erreur : {(firstLineEnd > 0 ? error.Substring(0, firstLineEnd) : error)}"));
                     return null;
                 }
 
@@ -225,12 +225,12 @@ namespace conan_vs_extension
                     }
                 }
 
-                ConanOutputPane.Log($"  -> {libraries.Count} bibliothèque(s) trouvée(s).");
+                ConanOutputPane.Log(Loc.T($"  -> {libraries.Count} librarie(s) found.", $"  -> {libraries.Count} bibliothèque(s) trouvée(s)."));
                 return libraries;
             }
             catch (Exception ex)
             {
-                ConanOutputPane.Log($"  -> exception : {ex.Message}");
+                ConanOutputPane.Log(Loc.T($"  -> exception: {ex.Message}", $"  -> exception : {ex.Message}"));
                 return null;
             }
         }
@@ -303,7 +303,7 @@ namespace conan_vs_extension
                 (int exitCode, string stdout, string stderr) = await RunConanCommandAsync(conanPath, "remote list-users", 15000);
                 if (exitCode != 0)
                 {
-                    ConanOutputPane.Log($"  -> échec (code {exitCode}) : {(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr)}");
+                    ConanOutputPane.Log(Loc.T($"  -> failed (code {exitCode}): {(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr)}", $"  -> échec (code {exitCode}) : {(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr)}"));
                     return users;
                 }
 
@@ -333,7 +333,7 @@ namespace conan_vs_extension
             }
             catch (Exception ex)
             {
-                ConanOutputPane.Log($"  -> exception : {ex.Message}");
+                ConanOutputPane.Log(Loc.T($"  -> exception: {ex.Message}", $"  -> exception : {ex.Message}"));
             }
 
             return users;
@@ -381,8 +381,8 @@ namespace conan_vs_extension
                     if (completed != readsTask)
                     {
                         try { process.Kill(); } catch { /* already exited on its own */ }
-                        ConanOutputPane.Log("  -> délai dépassé (60s), processus arrêté.");
-                        return (false, "conan n'a pas répondu dans le délai imparti (60s).");
+                        ConanOutputPane.Log(Loc.T("  -> timed out (60s), process killed.", "  -> délai dépassé (60s), processus arrêté."));
+                        return (false, Loc.T("conan did not answer within the allotted time (60s).", "conan n'a pas répondu dans le délai imparti (60s)."));
                     }
 
                     string stdout = await stdoutTask;
@@ -392,8 +392,8 @@ namespace conan_vs_extension
                     if (process.ExitCode != 0)
                     {
                         string error = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-                        ConanOutputPane.Log($"  -> échec (code {process.ExitCode}) : {error}");
-                        return (false, string.IsNullOrWhiteSpace(error) ? $"conan a retourné le code {process.ExitCode}." : error.Trim());
+                        ConanOutputPane.Log(Loc.T($"  -> failed (code {process.ExitCode}): {error}", $"  -> échec (code {process.ExitCode}) : {error}"));
+                        return (false, string.IsNullOrWhiteSpace(error) ? Loc.T($"conan returned code {process.ExitCode}.", $"conan a retourné le code {process.ExitCode}.") : error.Trim());
                     }
 
                     ConanOutputPane.Log("  -> OK");
@@ -402,7 +402,7 @@ namespace conan_vs_extension
             }
             catch (Exception ex)
             {
-                ConanOutputPane.Log($"  -> exception : {ex.Message}");
+                ConanOutputPane.Log(Loc.T($"  -> exception: {ex.Message}", $"  -> exception : {ex.Message}"));
                 return (false, ex.Message);
             }
         }
@@ -431,8 +431,8 @@ namespace conan_vs_extension
                 if (exitCode != 0)
                 {
                     string error = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-                    ConanOutputPane.Log($"  -> échec (code {exitCode}) : {error}");
-                    return (false, string.IsNullOrWhiteSpace(error) ? $"conan a retourné le code {exitCode}." : error.Trim());
+                    ConanOutputPane.Log(Loc.T($"  -> failed (code {exitCode}): {error}", $"  -> échec (code {exitCode}) : {error}"));
+                    return (false, string.IsNullOrWhiteSpace(error) ? Loc.T($"conan returned code {exitCode}.", $"conan a retourné le code {exitCode}.") : error.Trim());
                 }
 
                 ConanOutputPane.Log("  -> OK");
@@ -440,7 +440,7 @@ namespace conan_vs_extension
             }
             catch (Exception ex)
             {
-                ConanOutputPane.Log($"  -> exception : {ex.Message}");
+                ConanOutputPane.Log(Loc.T($"  -> exception: {ex.Message}", $"  -> exception : {ex.Message}"));
                 return (false, ex.Message);
             }
         }
@@ -467,9 +467,9 @@ namespace conan_vs_extension
                 if (exitCode != 0)
                 {
                     string error = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-                    ConanOutputPane.Log($"  -> échec (code {exitCode}) : {error}");
+                    ConanOutputPane.Log(Loc.T($"  -> failed (code {exitCode}): {error}", $"  -> échec (code {exitCode}) : {error}"));
                     System.Diagnostics.Debug.WriteLine($"[ConanRemoteHelper] 'conan {arguments}' failed (exit {exitCode}): {error}");
-                    return (false, string.IsNullOrWhiteSpace(error) ? $"conan a retourné le code {exitCode}." : error.Trim());
+                    return (false, string.IsNullOrWhiteSpace(error) ? Loc.T($"conan returned code {exitCode}.", $"conan a retourné le code {exitCode}.") : error.Trim());
                 }
 
                 ConanOutputPane.Log("  -> OK");
@@ -477,7 +477,7 @@ namespace conan_vs_extension
             }
             catch (Exception ex)
             {
-                ConanOutputPane.Log($"  -> exception : {ex.Message}");
+                ConanOutputPane.Log(Loc.T($"  -> exception: {ex.Message}", $"  -> exception : {ex.Message}"));
                 System.Diagnostics.Debug.WriteLine($"[ConanRemoteHelper] 'conan {arguments}' threw: {ex}");
                 return (false, ex.Message);
             }
@@ -691,8 +691,8 @@ namespace conan_vs_extension
                 if (completed != readsTask)
                 {
                     try { process.Kill(); } catch { /* already exited on its own */ }
-                    ConanOutputPane.Log($"  -> délai dépassé ({timeoutMs / 1000}s), processus arrêté.");
-                    return (-1, string.Empty, $"'conan {arguments}' n'a pas répondu dans le délai imparti ({timeoutMs / 1000}s).");
+                    ConanOutputPane.Log(Loc.T($"  -> timed out ({timeoutMs / 1000}s), process killed.", $"  -> délai dépassé ({timeoutMs / 1000}s), processus arrêté."));
+                    return (-1, string.Empty, Loc.T($"'conan {arguments}' did not answer within the allotted time ({timeoutMs / 1000}s).", $"'conan {arguments}' n'a pas répondu dans le délai imparti ({timeoutMs / 1000}s)."));
                 }
 
                 string stdout = await stdoutTask;

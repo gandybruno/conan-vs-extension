@@ -60,6 +60,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Offline fallback.** When the selected source is unreachable (including a remote that
   answers with an error entry), the list falls back to the local Conan cache and a banner
   explains why.
+- **English and French.** Every text of the extension (package manager, Package Sources page,
+  dialogs, messages, Output pane) is shown in the language of the Visual Studio UI: French when
+  Visual Studio runs in French, English otherwise.
 - **Progress overlay** while installing or uninstalling a package.
 - Support for Visual Studio 18 (`v145` toolset) in Conan profile generation. The profile's
   `compiler.version` comes from the MSVC toolset the project really uses
