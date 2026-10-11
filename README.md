@@ -2,187 +2,289 @@
 
 ![Build](https://github.com/gandybruno/conan-vs-extension/actions/workflows/main.yml/badge.svg?branch=develop)
 
-Conan, the C and C++ package manager, is now directly integrated into your IDE. List
-available libraries, install, and use them without leaving Visual Studio.
+**English** | [Français](README.fr.md)
 
-- 🔧 **Compatibility:** Designed exclusively for Conan 2.0 and above.
-- 💻 **Platforms supported:** It is developed for Visual Studio 2022 and beyond.
-- ⏫ **Looking Ahead:** We're committed to supporting Conan 2.0 and future versions.
-- 📢 **Early stage release:** Your feedback is crucial as we continue to improve 🚀
+Conan, the C and C++ package manager, directly inside Visual Studio. Browse the libraries of
+your Conan remotes, check that they fit your project, install them, work on their sources
+and debug them - without leaving the IDE.
 
-## What's new in 2.1.0
+- 🔧 **Conan 2 only** (2.0 and above).
+- 💻 **Visual Studio 2022 and 2026**, C++ (MSBuild / `.vcxproj`) projects.
+- 🌍 **English and French:** the extension follows the language of the Visual Studio UI.
+- 📦 Works with ConanCenter, Artifactory, a Conan server and **GitLab Package Registry**.
 
-> The full history is in [CHANGELOG.md](CHANGELOG.md).
+## Table of contents
 
-This release is a large pass of bug fixes and quality-of-life improvements on top of the
-NuGet-style Package Manager introduced previously:
+1. [Installation](#1-installation)
+2. [First steps](#2-first-steps)
+3. [Browsing and installing libraries](#3-browsing-and-installing-libraries)
+4. [Compatibility check before installing](#4-compatibility-check-before-installing)
+5. [Removing a library from a project](#5-removing-a-library-from-a-project)
+6. [Editing and debugging a library (editable mode)](#6-editing-and-debugging-a-library-editable-mode)
+7. [Remotes (package sources)](#7-remotes-package-sources)
+8. [Adding a remote, including GitLab](#8-adding-a-remote-including-gitlab)
+9. [Working offline](#9-working-offline)
+10. [How the extension integrates with your project](#10-how-the-extension-integrates-with-your-project)
+11. [Output pane and troubleshooting](#11-output-pane-and-troubleshooting)
+12. [Settings](#12-settings)
+13. [Building the extension and releases](#13-building-the-extension-and-releases)
 
-- **Conan Output pane.** Every `conan` command the extension runs (install, list, remote
-  management, recipe lookups...) is now logged to a dedicated "Conan" pane in Visual
-  Studio's Output window, which surfaces itself automatically as soon as something is
-  logged - the same way CMake Tools' own pane does. `conan install` output (including
-  compiler output while building a missing binary) streams in line-by-line as it happens
-  instead of only appearing once the command finishes.
-- **The build now waits for Conan.** Starting a Build while a Conan install/update is
-  still running used to race with it and could crash Visual Studio or fail the link step.
-  The build is now automatically postponed and re-triggered once Conan finishes, for both
-  automatic installs (opening a solution, adding a project, switching configuration) and
-  manual ones (the Install/Uninstall buttons).
-- **Visible progress during Install/Uninstall.** Installing or removing a package now
-  shows a full progress overlay instead of leaving the window looking frozen - useful
-  since Conan can take several minutes to compile a missing binary from source.
-- **Offline fallback.** If the selected package source can't be reached, the package list
-  now falls back to what Conan's local cache genuinely has available, with a visible
-  banner explaining why - instead of silently showing a stale list left over from a
-  previous session.
-- **Fixed: uninstalling a package could silently do nothing.** The Uninstall button now
-  looks up the actually-installed version from `conandata.yml` instead of trusting the
-  version picker (which lists remote-available versions, not the installed one).
-- **Fixed: both tabs could get stuck loading forever.** Every `conan` process call is now
-  bounded by a timeout, and the "Installé" tab (which only reads local files) no longer
-  waits on a slow/hung fetch for the "Parcourir" tab.
-- **NuGet-style search box.** The plain search field is now an editable combo box with a
-  magnifying-glass button, placeholder text, and a dropdown of your most recent searches
-  (Enter or the magnifying glass commits a search to that history); the refresh button now
-  sits right next to it.
-- **Package Sources page can manage authentication.** Tools > Options > Conan Package
-  Manager > Package Sources can now log in/out of a remote (`conan remote login`/`logout`)
-  directly, showing which user (if any) is currently authenticated on each one. The
-  password is sent to `conan` through the environment of the `conan` process, never as a command-line
-  argument.
-- Restyled icons (Actualiser/Configurer) to sit flush with the toolbar, matching NuGet's
-  own flat look.
-- **Removed the legacy docked tool window.** The original single-source package browser
-  (View > Other Windows > Conan C/C++ Package Manager) has been deleted: it duplicated the
-  per-project window with none of the fixes above (including the uninstall bug), and had
-  no reason to keep existing once every project got its own **Manage Conan Packages...**
-  window.
+## 1. Installation
 
-## Using the Extension
+**Prerequisites**
 
-### Managing packages for a project
+- Visual Studio 2022 or later with the *Desktop development with C++* workload.
+- [Conan 2](https://docs.conan.io/2/installation.html) installed and available on your
+  `PATH` (`conan --version` must work in a terminal). If it is installed somewhere else, you
+  can point the extension at it, see [Settings](#12-settings).
 
-The primary way to use the extension is per-project, the same way NuGet's own "Manage
-NuGet Packages..." works: right-click a project in Solution Explorer (or use the
-**Project** menu) and choose **Manage Conan Packages...**. This opens a document window
-(an editor tab) with **Parcourir**/**Installé** tabs, a search box, and package details -
-scoped to that one project.
+**Install the extension**
 
-> The older docked tool window (**View > Other Windows > Conan C/C++ Package Manager**)
-> has been removed in 2.1.0 - it predated the per-project window above, duplicated its
-> functionality without most of its fixes (including a known uninstall bug), and is no
-> longer needed now that every project has its own **Manage Conan Packages...** window.
+- From Visual Studio: **Extensions > Manage Extensions**, search for *Conan*, **Download**,
+  then restart Visual Studio.
+- From a release: download `conan-vs-extension.vsix` from the
+  [GitHub releases](https://github.com/gandybruno/conan-vs-extension/releases), close Visual
+  Studio and double-click the file.
+- From source: see [Building the extension](#13-building-the-extension-and-releases).
 
-#### Initial Configuration
+There is **nothing to configure** if `conan` is on your `PATH`: the extension uses it and
+selects **conancenter** as the default package source.
 
-There is nothing to configure if `conan` is on your system PATH: **Use System Conan** is
-checked by default and **conancenter** is selected as the package source. If Conan cannot
-be found the window is locked with a message; open **Tools > Options > Conan Package
-Manager > General**, uncheck "Use System Conan" and point it at a specific `conan.exe`.
-Clicking the ⚙️ (gear) icon in the package manager window opens the same page directly.
+## 2. First steps
 
-![Select Conan executable](.github/readme/select-conan-executable.png)
+Open a C++ solution, then right-click a project in Solution Explorer - or use the **Project**
+menu - and choose **Manage Conan Packages...**.
 
-#### Searching and Adding Libraries
+![Project menu](.github/readme/en-project-menu.png)
 
-Once configured, search for a package by typing in the search box - the list filters as
-you type, and pressing Enter (or clicking the magnifying glass) adds the term to a
-"recent searches" dropdown for later. Selecting a library shows its available versions
-and details (description, license, author, topics, when the recipe exposes them).
+This opens a document window dedicated to that project, with a **Browse** tab (everything the
+selected source offers) and an **Installed** tab (what the project already uses).
 
-Clicking **Installer** adds the selected package/version as a requirement (writing
-`conanfile.py` and `conandata.yml` if this is the project's first Conan package) and runs
-`conan install` right away, so the very next Build already has everything it needs -
-progress is shown in a full-window overlay, and the detailed command output appears
-automatically in the **Conan** pane of the Output window. **Désinstaller** removes a
-package the same way.
+> The command also appears in the **Project** menu when a C++ project is selected. The
+> **Refresh Browsing Database** entry just above it is Visual Studio's own command (see
+> [IntelliSense](#intellisense)).
 
-At any point, use the refresh (🔄) button next to the search box to re-fetch the package
-list from the currently selected source.
+## 3. Browsing and installing libraries
 
-#### Removing and editing libraries
+![Browse tab](.github/readme/en-browse.png)
 
-The **Installed** tab lists the dependencies of the current project (its `conandata.yml`),
-whether or not the selected source knows them. **Retirer du projet** removes one from the
-project and re-runs `conan install`; the package stays in the Conan cache, so other projects
-are not affected.
+- **Source** (top right): the Conan remote the list comes from. Remotes are the ones
+  configured in Conan (`conan remote list`). The ⚙ button opens the extension settings and the
+  🔄 button refreshes the list.
+- **Search box** (Ctrl+L): the list filters as you type. Enter, or the magnifying glass, keeps
+  the term in a *recent searches* drop-down.
+- **Details panel**: version picker, description, license, author, topics, homepage and the
+  [compatibility check](#4-compatibility-check-before-installing).
+- **Install**: adds the library to the project and runs `conan install` straight away, so the
+  next build already has everything it needs. A progress overlay is shown (Conan may have to
+  compile a missing binary, which can take minutes) and the full command output scrolls in the
+  **Conan** pane of the Output window.
 
-To work on the sources of a library your project uses, select it in **Installed** and check
-**Éditable**, then pick the folder holding the library's `conanfile.py`. This runs
-`conan editable add` and re-runs `conan install`, so the project is built against the local
-sources instead of the package from the Conan cache. The folder is shown under the package
-name, a pencil marks editable packages in the list, **Dossier...** changes the folder and
-unchecking the box goes back to the regular package.
+The first time, the extension creates `conanfile.py` and `conandata.yml` next to the project
+file, then keeps `conandata.yml` up to date as you add or remove libraries.
 
-Requirements (Conan's, not the extension's): the recipe must define `layout()`, and the
-library must have been built once in its own folder (`conan build .`) so its generated files
-exist. Editable mode is stored in the Conan home, so it applies to every project on the
-machine that uses that `name/version`.
+## 4. Compatibility check before installing
 
-The Conan cache itself can be emptied from **Tools > Options > Conan Package Manager >
-Package Sources** (**Nettoyer le cache...**).
+When you select a library/version, the extension asks Conan (`conan graph info`) whether the
+project's profile - compiler version, build type, runtime, C++ standard - can use it, **without
+installing or building anything**:
 
-#### Configuring Package Sources
+| Message | Meaning |
+|---|---|
+| ✔ *A binary matches this project (msvc 194, Debug).* | A prebuilt binary exists (in the cache or on the remote). |
+| ⚠ *No prebuilt binary... will be built from the sources included in the package.* | Conan will compile it; the sources travel with the recipe (works offline). |
+| ⚠ *... the recipe downloads its sources from the internet.* | Conan will compile it; a network connection is required for the sources. |
+| ⛔ *Incompatible with this project: ...* | The recipe refuses this configuration, or there is no binary **and** no source. **Install is disabled** and the reason is shown. |
+| *Compatibility could not be verified.* | Conan could not answer (offline, error). Install stays enabled. |
 
-The list of available packages comes entirely from the Conan remotes already configured
-on your machine (`conan remote list`) - there is no separate, plugin-specific source
-configuration to maintain. The **Source** dropdown in the package manager window lets you
-switch between them, and **Tools > Options > Conan Package Manager > Package Sources**
-gives you a NuGet-style grid to add, remove, enable/disable, or edit a remote's URL,
-equivalent to running `conan remote add/remove/enable/disable/update` yourself.
+Below the message, the **binaries published on the remote** for that version are listed (compiler,
+build type, runtime, architecture - Windows ones only), so you can see at a glance which
+configurations are available. Header-only libraries are shown as compiler-independent.
 
-That same page can also authenticate you on a remote: select it and click **Se
-connecter...** to run `conan remote login` (your password is handed to `conan` through its environment,
-never passed as a command-line argument), or **Se déconnecter** to log out
-(`conan remote logout`). The **Utilisateur** column shows who, if anyone, is currently
-authenticated on each remote.
+> The `compiler.version` of the generated profile comes from the MSVC toolset your project
+> really uses (for example MSVC 14.44 → `194`), so it matches the compiler that will build the
+> library. When the project's platform toolset differs from the one your Visual Studio
+> provides by default, a note is written to the Conan Output pane.
 
-**Adding a remote:** click **Ajouter un remote...** and fill in the dialog.
+## 5. Removing a library from a project
 
-- *Remote Conan (URL)*: a name and the URL of any Conan remote (Artifactory, a Conan
-  server, ...).
-- *GitLab Package Registry*: a name, the GitLab server (default `https://gitlab.com`) and
-  the project's numeric ID (Settings > General) or its path (`group/project`). The dialog
-  builds the Conan URL `<server>/api/v4/projects/<id>/packages/conan` for you. For a private
-  project also give your username and an access token (Personal, Project or Deploy token)
-  with the `read_api` and `read_package_registry` scopes; the extension logs you in on the
-  remote (`conan remote login`) and keeps the token for the package listing. Leave both empty
-  for a public project.
+![Installed tab with an editable package](.github/readme/en-installed-editable.png)
 
-The same remote from a terminal:
+The **Installed** tab lists the dependencies of the current project, read from its
+`conandata.yml` - even libraries the selected source does not know (a local or editable
+package, a package from another remote).
+
+**Remove from project** deletes the dependency from `conandata.yml` and re-runs
+`conan install`. The package **stays in the Conan cache**, so your other projects are not
+affected. To empty the cache see [Cleaning the cache](#cleaning-the-local-cache).
+
+## 6. Editing and debugging a library (editable mode)
+
+Conan's *editable packages* let a project use the sources of a library from a local folder
+instead of the package in the cache, so you can modify the library and debug into it.
+
+1. In the **Installed** tab select the library.
+2. Check **Editable (local sources)** and choose the folder that contains the library's
+   `conanfile.py`.
+3. The extension runs `conan editable add` and `conan install`; the project now builds against
+   your local sources. The folder is shown under the name, a ✎ marks editable packages in the
+   list and **Folder...** changes it.
+4. Uncheck the box to go back to the regular package.
+
+Requirements (Conan's, not the extension's):
+
+- the recipe must define `layout()`;
+- the library must have been built once in its own folder (`conan build .`) so its generated
+  files exist, in the same configuration as your project (Debug/Release...).
+
+Editable mode is stored in the Conan home, so it applies to **every** project on the machine
+that uses that `name/version`. The state is read from Conan each time it is displayed.
+
+## 7. Remotes (package sources)
+
+**Tools > Options > Conan Package Manager > Package Sources** (or the ⚙ button of the package
+manager) is a NuGet-style grid of the remotes configured on the machine - the same list as
+`conan remote list`.
+
+![Package Sources](.github/readme/en-package-sources.png)
+
+| Button | Equivalent command |
+|---|---|
+| **Add a remote...** | `conan remote add` (see [below](#8-adding-a-remote-including-gitlab)) |
+| **Log in... / Log out** | `conan remote login` / `conan remote logout` |
+| **Enable / Disable** | `conan remote enable` / `conan remote disable` |
+| **Edit source...** | `conan remote update` |
+| **Remove** | `conan remote remove` (only the configuration, not the packages) |
+
+The **User** column shows who is authenticated on each remote. Passwords are handed to `conan`
+through its environment, never on the command line. The **Source** drop-down of the package
+manager follows the changes made here.
+
+### Cleaning the local cache
+
+**Clean cache...** (bottom right of the page) runs `conan remove "*" -c` after a confirmation:
+every package and binary downloaded or built so far, for all projects, is deleted and will be
+downloaded or rebuilt on the next `conan install`. Editable packages are not touched.
+
+## 8. Adding a remote, including GitLab
+
+Click **Add a remote...**.
+
+![Add a remote](.github/readme/en-add-remote.png)
+
+**Conan remote (URL)** - Artifactory, a Conan server...: give a *name* and the *URL*.
+
+**GitLab Package Registry** - fill in:
+
+| Field | Value |
+|---|---|
+| Name | Any name, for example `gitlab` |
+| GitLab server | `https://gitlab.com` or your own server |
+| Project ID or path | The numeric project ID (*Settings > General*) or `group/project` |
+| User | Your GitLab user name (private project) |
+| Access token | A personal, project or deploy token with the **`read_api`** and **`read_package_registry`** scopes (private project) |
+
+The dialog builds the Conan v2 URL
+`<server>/api/v4/projects/<id>/packages/conan` for you and, when a user and a token are given,
+logs you in. Leave both empty for a public project.
+
+The same thing from a terminal:
 
 ```
-conan remote add my-gitlab https://gitlab.com/api/v4/projects/<project-id>/packages/conan
-conan remote login my-gitlab <username> -p <token>
+conan remote add gitlab https://gitlab.com/api/v4/projects/<project-id>/packages/conan
+conan remote login gitlab <username> -p <token>
 ```
 
-For a remote pointing at a GitLab Package Registry project, the extension additionally
-queries GitLab's own [packages
-API](https://docs.gitlab.com/ee/api/packages.html#for-a-project) as a fallback, since
-GitLab's Conan v2 endpoint does not support a bare wildcard search. If that project is
-private, you'll be prompted once for the token (`read_api` scope) if it was not given when
-adding the remote; it is remembered per remote afterwards.
+GitLab's Conan endpoint does not support a bare wildcard search, so for GitLab remotes the
+extension also queries GitLab's
+[packages API](https://docs.gitlab.com/ee/api/packages.html#for-a-project) to list the
+library names; the token is remembered per remote for this purpose.
 
-#### Working offline
+To publish a package to that remote: `conan upload "<name>/<version>" -r=gitlab`.
 
-If the selected source can't be reached, the package list automatically falls back to
-what's already in your local Conan cache (packages you've downloaded before), with a
-banner making clear you're looking at cached data rather than a live view of the remote.
+## 9. Working offline
 
-### Tracking what the extension is doing
+If the selected remote cannot be reached, the list falls back to the **local Conan cache**
+(packages you already downloaded) and a banner says so. Installing a library whose recipe and
+binary are in the cache works without a connection. The compatibility check simply reports
+that it could not be verified and never blocks the installation in that case.
 
-Every `conan` command the extension runs - proactive installs when a solution opens or a
-project's configuration changes, manual installs/removals, remote list refreshes, recipe
-metadata lookups - is logged to a dedicated **Conan** pane of the Output window
-(**View > Output**, then pick "Conan" from the "Show output from" dropdown). That pane
-pops into view on its own as soon as something is logged, the same way the Build or CMake
-panes do, so you don't need to go looking for it.
+## 10. How the extension integrates with your project
 
-## Installation
+Files written next to the `.vcxproj`:
 
-The Conan Visual Studio Extension can be installed directly from within Visual Studio:
+| File | Purpose |
+|---|---|
+| `conandata.yml` | The list of dependencies (`requirements:`). Edited by the extension. |
+| `conanfile.py` | A generated recipe that installs what `conandata.yml` lists and generates the MSBuild property sheets. |
+| `.conan/<Config>_<Platform>` | One Conan profile per build configuration, generated from the project (arch, build type, compiler version, runtime, C++ standard). |
+| `.conan/conan_install.bat` | Pre-build step that re-runs `conan install` when something changed. |
+| `conan/**/*.props` | The property sheets Conan generates; imported by the project so include and library paths are set. |
 
-- Open the Extensions menu.
-- Select Manage Extensions.
-- Search for "Conan" in the Online marketplace.
-- Download and install the extension.
+Both `conanfile.py` and `conandata.yml` start with a comment guard: if you remove it, the
+extension stops modifying the file and you are free to edit it by hand.
+
+Automatic behaviors:
+
+- `conan install` runs proactively when a solution is opened, a project is added, or the
+  active configuration/profile changes. Installs are serialized so two of them never race on
+  the Conan cache.
+- If you start a **Build** while Conan is installing, the build is postponed and restarted
+  automatically once Conan has finished.
+- Every `conan` call is bounded by a timeout so a hung command never freezes the IDE.
+- A recipe left broken in the Conan cache is removed and the install retried once.
+
+### IntelliSense
+
+Empty `conandeps.props` files are created before the first `conan install` and imported
+unconditionally, and when an install changes the generated property sheets the extension runs
+**Project > Refresh Browsing Database** (*Rescan Solution*) for you, so `#include` lines of a
+newly installed library are resolved without reloading the project.
+
+## 11. Output pane and troubleshooting
+
+Every `conan` command the extension runs - installs, lists, remote operations, recipe lookups,
+compatibility checks - is logged in the **Conan** pane of the Output window (**View > Output**,
+then choose *Conan* in *Show output from*). It shows itself as soon as something is logged,
+and the output of `conan install`, including compiler output, streams live.
+
+| Symptom | What to check |
+|---|---|
+| The window says Conan was not found | Install Conan 2, or set the path in **Tools > Options > Conan Package Manager > General**. |
+| The list is empty / shows a banner | The remote is unreachable (offline, VPN, wrong URL): the cache is shown instead. |
+| *Incompatible with this project* | Read the reason; pick another version, or change the project's configuration. |
+| Binaries are rebuilt after changing toolset | Binaries are tied to `compiler.version`; check the toolset note in the Conan pane or publish a binary for your profile. |
+| `#include` still underlined | Run **Project > Refresh Browsing Database** once; check the `conan/` folder exists. |
+| GitLab login fails | The token needs `read_api` and `read_package_registry`; see the Conan pane for the exact error. |
+
+## 12. Settings
+
+**Tools > Options > Conan Package Manager > General**
+
+- **Use System Conan** (default): uses `conan` from the `PATH`.
+- **Executable Path**: a specific `conan.exe`. Unchecking *Use System Conan* lets you set it.
+
+The selected source and the per-remote GitLab tokens are stored in
+`%UserProfile%\.conan-vs-extension\plugin-settings.json` (plain text - treat it like any
+credential file).
+
+## 13. Building the extension and releases
+
+Requirements: Visual Studio with the *Visual Studio extension development* workload.
+
+```
+git clone https://github.com/gandybruno/conan-vs-extension.git
+cd conan-vs-extension
+msbuild conan-vs-extension.csproj /t:Rebuild /p:Configuration=Release
+```
+
+The VSIX is produced in `bin\Release\conan-vs-extension.vsix`. Press F5 in Visual Studio to
+debug it in the experimental instance.
+
+**Branching (gitflow).** Work happens in `feature/*` branches merged into `develop`;
+`master` only receives releases. Pushes to `develop` and pull requests are only *built* by
+CI. A `v*` tag on a commit of `master` (matching the version in
+`source.extension.vsixmanifest`) builds the VSIX and creates a draft GitHub release containing
+it.
+
+See [CHANGELOG.md](CHANGELOG.md) for the history and [LICENSE](LICENSE) (MIT).
