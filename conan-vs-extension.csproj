@@ -130,6 +130,9 @@
     <Page Include="Resources\icons.xaml">
         <Generator>MSBuild:Compile</Generator>
     </Page>
+    <Page Include="Resources\ThemedStyles.xaml">
+        <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="VSPackage.resx">
