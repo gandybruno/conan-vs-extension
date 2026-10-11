@@ -46,7 +46,7 @@ and debug them - without leaving the IDE.
 - From a release: download `conan-vs-extension.vsix` from the
   [GitHub releases](https://github.com/gandybruno/conan-vs-extension/releases), close Visual
   Studio and double-click the file.
-- From source: see [Building the extension](#13-building-the-extension-and-releases).
+- From source: see [Building the extension](#14-building-the-extension-and-releases).
 
 There is **nothing to configure** if `conan` is on your `PATH`: the extension uses it and
 selects **conancenter** as the default package source.

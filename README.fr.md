@@ -46,7 +46,7 @@ travaillez sur leurs sources et déboguez-les - sans quitter l'IDE.
 - Depuis une version publiée : téléchargez `conan-vs-extension.vsix` depuis les
   [releases GitHub](https://github.com/gandybruno/conan-vs-extension/releases), fermez Visual
   Studio et double-cliquez sur le fichier.
-- Depuis les sources : voir [Compiler l'extension](#13-compiler-lextension-et-publier-une-version).
+- Depuis les sources : voir [Compiler l'extension](#14-compiler-lextension-et-publier-une-version).
 
 **Il n'y a rien à configurer** si `conan` est dans votre `PATH` : l'extension l'utilise et
 sélectionne **conancenter** comme source de paquets par défaut.
