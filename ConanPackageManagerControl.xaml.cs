@@ -497,10 +497,31 @@ namespace conan_vs_extension
             }
         }
 
+        /**
+         * Opens a link of the details panel in the browser. Only web links: the homepage comes from
+         * the recipe, i.e. from whoever published the package, and anything else handed to the
+         * shell (a file:// or UNC path, another URI scheme) could start a program.
+         */
         private void Hyperlink_RequestNavigate(object sender, RequestNavigateEventArgs e)
         {
-            System.Diagnostics.Process.Start(e.Uri.AbsoluteUri);
             e.Handled = true;
+
+            Uri uri = e.Uri;
+            if (uri == null || !uri.IsAbsoluteUri ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                ConanOutputPane.Log(Loc.T($"Link not opened (only http/https links are): {uri}", $"Lien non ouvert (seuls les liens http/https le sont) : {uri}"));
+                return;
+            }
+
+            try
+            {
+                System.Diagnostics.Process.Start(uri.AbsoluteUri);
+            }
+            catch (Exception ex)
+            {
+                ConanOutputPane.Log(Loc.T($"Could not open {uri}: {ex.Message}", $"Impossible d'ouvrir {uri} : {ex.Message}"));
+            }
         }
 
         /**
@@ -823,7 +844,8 @@ namespace conan_vs_extension
             }
 
             if (!string.IsNullOrWhiteSpace(metadata.Homepage) &&
-                Uri.TryCreate(metadata.Homepage, UriKind.Absolute, out Uri homepageUri))
+                Uri.TryCreate(metadata.Homepage, UriKind.Absolute, out Uri homepageUri) &&
+                (homepageUri.Scheme == Uri.UriSchemeHttp || homepageUri.Scheme == Uri.UriSchemeHttps))
             {
                 PackageHomepageHyperlink.NavigateUri = homepageUri;
                 PackageHomepageLine.Visibility = Visibility.Visible;
