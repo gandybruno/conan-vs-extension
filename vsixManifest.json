@@ -7,25 +7,29 @@
     "overview": "README.md",
     "assetFiles": [
         {
-            "pathOnDisk": ".github/readme/build-project.png",
-            "targetPath": ".github/readme/build-project.png"
+            "pathOnDisk": "readme/en-project-menu.png",
+            "targetPath": "readme/en-project-menu.png"
         },
         {
-            "pathOnDisk": ".github/readme/search-packages.png",
-            "targetPath": ".github/readme/search-packages.png"
+            "pathOnDisk": "readme/en-browse.png",
+            "targetPath": "readme/en-browse.png"
         },
         {
-            "pathOnDisk": ".github/readme/select-conan-executable.png",
-            "targetPath": ".github/readme/select-conan-executable.png"
+            "pathOnDisk": "readme/en-installed-editable.png",
+            "targetPath": "readme/en-installed-editable.png"
         },
         {
-            "pathOnDisk": ".github/readme/tool-window-extension.png",
-            "targetPath": ".github/readme/tool-window-extension.png"
+            "pathOnDisk": "readme/en-package-sources.png",
+            "targetPath": "readme/en-package-sources.png"
+        },
+        {
+            "pathOnDisk": "readme/en-add-remote.png",
+            "targetPath": "readme/en-add-remote.png"
         }
     ],
     "priceCategory": "free",
     "publisher": "conan-io",
     "private": false,
     "qna": false,
-    "repo": "https://github.com/conan-io/conan-vs-extension"
+    "repo": "https://github.com/gandybruno/conan-vs-extension"
 }
