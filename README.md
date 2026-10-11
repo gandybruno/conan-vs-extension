@@ -27,7 +27,8 @@ and debug them - without leaving the IDE.
 10. [How the extension integrates with your project](#10-how-the-extension-integrates-with-your-project)
 11. [Output pane and troubleshooting](#11-output-pane-and-troubleshooting)
 12. [Settings](#12-settings)
-13. [Building the extension and releases](#13-building-the-extension-and-releases)
+13. [Packaging a library](#13-packaging-a-library)
+14. [Building the extension and releases](#14-building-the-extension-and-releases)
 
 ## 1. Installation
 
@@ -274,7 +275,57 @@ The selected source and the per-remote GitLab tokens are stored in
 `%UserProfile%\.conan-vs-extension\plugin-settings.json` (plain text - treat it like any
 credential file).
 
-## 13. Building the extension and releases
+## 13. Packaging a library
+
+A project that builds a static library or a DLL can itself become a Conan package, the way
+`dotnet pack` turns a project into a NuGet package. Open **Manage Conan Packages...** on the
+project: a **Package** tab appears next to **Browse** and **Installed** (it is not shown for
+an application).
+
+| Setting | Meaning |
+|---|---|
+| **Name** | Name of the package, in lowercase. Suggested from the project name. |
+| **Version** | Stored in `version.txt`, next to the project. |
+| **License** | Required, e.g. `MIT` or `Proprietary`. |
+| **Description** | Optional. |
+| **Public headers folder** | Relative to the project (default `include`). Its `*.h`, `*.hpp`... files are packaged with their subfolders. |
+| **Include the debug symbols (.pdb)** | Packages the `.pdb` next to the binaries. |
+| **Usable by projects built with a newer MSVC toolset** | A project built with a newer Visual Studio may use these binaries instead of asking for its own. Never the other way round. |
+| **Configurations to package** | Debug and Release of the active platform by default. Both are needed: an MSVC Debug project cannot link a Release library. |
+
+**Create package** saves the settings, then for each selected configuration builds it with
+Visual Studio and runs `conan export-pkg`: the binaries Visual Studio just produced are
+packaged as they are, Conan does not rebuild anything. All the configurations end up under
+the same `name/version` in the **local Conan cache**, where the other projects of the machine
+can install it from the **Browse** tab. The same action is available as **Create Conan
+Package** in the **Project** menu and the project's context menu.
+
+Nothing is uploaded. To share the package, run the command shown at the end:
+
+```
+conan upload <name>/<version> -r=<remote>
+```
+
+The package holds binaries only, like a NuGet package: a consumer cannot rebuild a
+configuration that was not packaged.
+
+A static library compiled with `/GL` (whole program optimization, the default of a Release
+configuration) only suits the toolset that built it. The tab says so under the configuration,
+and the toolset compatibility is not applied to it.
+
+Files written next to the project:
+
+| File | Content |
+|---|---|
+| `version.txt` | The version, alone on one line, so a release script or a CI job can bump it. |
+| `conandata.yml` | The settings above (`package` section), next to the `requirements` of the project. |
+| `conanfile.py` | The library recipe. It is the same for every project and reads the two files above. |
+
+As for the other generated files, removing the two comment lines at the top of
+`conanfile.py` hands it over to you: the extension no longer rewrites it and **Create
+package** uses your recipe.
+
+## 14. Building the extension and releases
 
 Requirements: Visual Studio with the *Visual Studio extension development* workload.
 

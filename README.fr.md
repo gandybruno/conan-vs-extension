@@ -27,7 +27,8 @@ travaillez sur leurs sources et déboguez-les - sans quitter l'IDE.
 10. [Intégration dans votre projet](#10-intégration-dans-votre-projet)
 11. [Panneau Output et dépannage](#11-panneau-output-et-dépannage)
 12. [Paramètres](#12-paramètres)
-13. [Compiler l'extension et publier une version](#13-compiler-lextension-et-publier-une-version)
+13. [Empaqueter une bibliothèque](#13-empaqueter-une-bibliothèque)
+14. [Compiler l'extension et publier une version](#14-compiler-lextension-et-publier-une-version)
 
 ## 1. Installation
 
@@ -283,7 +284,57 @@ La source sélectionnée et les tokens GitLab par remote sont enregistrés dans
 `%UserProfile%\.conan-vs-extension\plugin-settings.json` (en clair - traitez ce fichier comme
 n'importe quel fichier d'identifiants).
 
-## 13. Compiler l'extension et publier une version
+## 13. Empaqueter une bibliothèque
+
+Un projet qui produit une bibliothèque statique ou une DLL peut lui-même devenir un paquet
+Conan, comme `dotnet pack` transforme un projet en paquet NuGet. Ouvrez **Manage Conan
+Packages...** sur le projet : un onglet **Paquet** apparaît à côté de **Parcourir** et
+**Installé** (il n'est pas affiché pour une application).
+
+| Réglage | Signification |
+|---|---|
+| **Nom** | Nom du paquet, en minuscules. Proposé à partir du nom du projet. |
+| **Version** | Enregistrée dans `version.txt`, à côté du projet. |
+| **Licence** | Obligatoire, par exemple `MIT` ou `Proprietary`. |
+| **Description** | Facultative. |
+| **Dossier des headers publics** | Relatif au projet (`include` par défaut). Ses fichiers `*.h`, `*.hpp`... sont empaquetés avec leurs sous-dossiers. |
+| **Inclure les symboles de débogage (.pdb)** | Empaquette les `.pdb` à côté des binaires. |
+| **Utilisable par les projets compilés avec un toolset MSVC plus récent** | Un projet compilé avec un Visual Studio plus récent peut utiliser ces binaires au lieu de réclamer les siens. Jamais l'inverse. |
+| **Configurations à empaqueter** | Debug et Release de la plateforme active par défaut. Les deux sont nécessaires : un projet MSVC en Debug ne peut pas lier une bibliothèque Release. |
+
+**Créer le paquet** enregistre les réglages puis, pour chaque configuration sélectionnée, la
+compile avec Visual Studio et lance `conan export-pkg` : les binaires que Visual Studio vient
+de produire sont empaquetés tels quels, Conan ne recompile rien. Toutes les configurations se
+retrouvent sous le même `nom/version` dans le **cache Conan local**, où les autres projets de
+la machine peuvent l'installer depuis l'onglet **Parcourir**. La même action existe sous le
+nom **Créer le paquet Conan** dans le menu **Projet** et le menu contextuel du projet.
+
+Rien n'est envoyé sur un remote. Pour partager le paquet, lancez la commande affichée à la fin :
+
+```
+conan upload <nom>/<version> -r=<remote>
+```
+
+Le paquet ne contient que des binaires, comme un paquet NuGet : un consommateur ne peut pas
+recompiler une configuration qui n'a pas été empaquetée.
+
+Une bibliothèque statique compilée avec `/GL` (optimisation de l'ensemble du programme, le
+défaut d'une configuration Release) ne convient qu'au toolset qui l'a produite. L'onglet le
+signale sous la configuration, et la compatibilité entre toolsets ne lui est pas appliquée.
+
+Fichiers écrits à côté du projet :
+
+| Fichier | Contenu |
+|---|---|
+| `version.txt` | La version, seule sur une ligne, pour qu'un script de release ou une CI puisse l'incrémenter. |
+| `conandata.yml` | Les réglages ci-dessus (section `package`), à côté des `requirements` du projet. |
+| `conanfile.py` | La recette de bibliothèque. Elle est identique pour tous les projets et lit les deux fichiers ci-dessus. |
+
+Comme pour les autres fichiers générés, retirer les deux lignes de commentaire en tête de
+`conanfile.py` vous en donne la main : l'extension ne le réécrit plus et **Créer le paquet**
+utilise votre recette.
+
+## 14. Compiler l'extension et publier une version
 
 Prérequis : Visual Studio avec la charge de travail *Développement d'extensions Visual Studio*.
 
