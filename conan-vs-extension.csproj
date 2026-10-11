@@ -58,7 +58,12 @@
     <Compile Include="ConanFileManager.cs" />
     <Compile Include="ConanDataFile.cs" />
     <Compile Include="ManagedFileGuard.cs" />
+    <Compile Include="Packaging\ConanProfileFile.cs" />
+    <Compile Include="Packaging\PackageCreator.cs" />
+    <Compile Include="Packaging\PackagePlanner.cs" />
     <Compile Include="Packaging\PackageSettings.cs" />
+    <Compile Include="Packaging\VcProjectInspector.cs" />
+    <Compile Include="Packaging\VsProjectBuilder.cs" />
     <Compile Include="Packaging\VersionFile.cs" />
     <Compile Include="ConanProfilesManager.cs" />
     <Compile Include="GlobalSettings.cs" />

@@ -517,6 +517,12 @@ echo No changes detected, skipping conan install...
 
         private static readonly System.Threading.SemaphoreSlim _installGate = new System.Threading.SemaphoreSlim(1, 1);
 
+        /**
+         * Held by every command that writes to the Conan cache (`conan install`, `conan
+         * export-pkg`), so two of them never run at the same time.
+         */
+        internal static System.Threading.SemaphoreSlim ConanCacheGate => _installGate;
+
         // Cancels the `conan install` currently holding _installGate (null when none is running).
         private static volatile System.Threading.CancellationTokenSource _installCancellation;
 

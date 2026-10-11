@@ -45,7 +45,9 @@ class ConanLibrary(ConanFile):
         self.name = self.name or self._package.get("name")
 
     def set_version(self):
-        self.version = self.version or load(self, os.path.join(self.recipe_folder, "version.txt")).strip()
+        version_file = os.path.join(self.recipe_folder, "version.txt")
+        if not self.version and os.path.exists(version_file):
+            self.version = load(self, version_file).strip()
 
     def requirements(self):
         for requirement in self.conan_data.get("requirements") or []:
