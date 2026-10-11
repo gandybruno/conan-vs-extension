@@ -54,6 +54,7 @@
     <Compile Include="BuildEventsHandler.cs" />
     <Compile Include="ConanInstallTracker.cs" />
     <Compile Include="ConanOutputPane.cs" />
+    <Compile Include="ConanProcessRunner.cs" />
     <Compile Include="ConanFileManager.cs" />
     <Compile Include="ConanProfilesManager.cs" />
     <Compile Include="GlobalSettings.cs" />
