@@ -56,6 +56,10 @@
     <Compile Include="ConanOutputPane.cs" />
     <Compile Include="ConanProcessRunner.cs" />
     <Compile Include="ConanFileManager.cs" />
+    <Compile Include="ConanDataFile.cs" />
+    <Compile Include="ManagedFileGuard.cs" />
+    <Compile Include="Packaging\PackageSettings.cs" />
+    <Compile Include="Packaging\VersionFile.cs" />
     <Compile Include="ConanProfilesManager.cs" />
     <Compile Include="GlobalSettings.cs" />
     <Compile Include="ConanOptionsPage.cs">
@@ -85,6 +89,7 @@
   <ItemGroup>
     <None Include="Key.snk" />
     <EmbeddedResource Include="Resources\targets-data.json" />
+    <EmbeddedResource Include="Resources\conanfile_library.py" />
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>
     </None>

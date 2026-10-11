@@ -22,23 +22,6 @@ namespace conan_vs_extension
     }
 
     /**
-     * Deserialization/serialization shape for the `requirements:` list in a project's
-     * conandata.yml - see ConanFileManager.
-     */
-    public class Requirements
-    {
-        public Requirements(string[] requirements)
-        {
-            this.requirements = requirements;
-        }
-        public Requirements()
-        {
-            this.requirements = new string[] { };
-        }
-        public string[] requirements { get; set; }
-    }
-
-    /**
      * Minimal WinForms "one text field" prompt dialog, shared across the extension (see
      * also the two-field CredentialsDialog used by ConanPackageSourcesControl).
      */

@@ -30,7 +30,7 @@ namespace conan_vs_extension
      * It is the sole, actively maintained package manager UI (a now-removed docked tool window
      * used to duplicate this functionality without most of its fixes).
      *
-     * Note: RootObject/Library/Requirements and MessageBoxWithInput are intentionally NOT
+     * Note: RootObject/Library and MessageBoxWithInput are intentionally NOT
      * redeclared here - they already exist (namespace-level) in ConanSharedModels.cs,
      * compiled into the same assembly, and are reused as-is.
      */
