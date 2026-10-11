@@ -55,7 +55,7 @@ selects **conancenter** as the default package source.
 Open a C++ solution, then right-click a project in Solution Explorer - or use the **Project**
 menu - and choose **Manage Conan Packages...**.
 
-![Project menu](.github/readme/en-project-menu.png)
+![Project menu](readme/en-project-menu.png)
 
 This opens a document window dedicated to that project, with a **Browse** tab (everything the
 selected source offers) and an **Installed** tab (what the project already uses).
@@ -66,7 +66,7 @@ selected source offers) and an **Installed** tab (what the project already uses)
 
 ## 3. Browsing and installing libraries
 
-![Browse tab](.github/readme/en-browse.png)
+![Browse tab](readme/en-browse.png)
 
 - **Source** (top right): the Conan remote the list comes from. Remotes are the ones
   configured in Conan (`conan remote list`). The ⚙ button opens the extension settings and the
@@ -108,7 +108,7 @@ configurations are available. Header-only libraries are shown as compiler-indepe
 
 ## 5. Removing a library from a project
 
-![Installed tab with an editable package](.github/readme/en-installed-editable.png)
+![Installed tab with an editable package](readme/en-installed-editable.png)
 
 The **Installed** tab lists the dependencies of the current project, read from its
 `conandata.yml` - even libraries the selected source does not know (a local or editable
@@ -146,7 +146,7 @@ that uses that `name/version`. The state is read from Conan each time it is disp
 manager) is a NuGet-style grid of the remotes configured on the machine - the same list as
 `conan remote list`.
 
-![Package Sources](.github/readme/en-package-sources.png)
+![Package Sources](readme/en-package-sources.png)
 
 | Button | Equivalent command |
 |---|---|
@@ -170,7 +170,7 @@ downloaded or rebuilt on the next `conan install`. Editable packages are not tou
 
 Click **Add a remote...**.
 
-![Add a remote](.github/readme/en-add-remote.png)
+![Add a remote](readme/en-add-remote.png)
 
 **Conan remote (URL)** - Artifactory, a Conan server...: give a *name* and the *URL*.
 

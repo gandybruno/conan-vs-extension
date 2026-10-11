@@ -55,7 +55,7 @@ sélectionne **conancenter** comme source de paquets par défaut.
 Ouvrez une solution C++, puis faites un clic droit sur un projet dans l'Explorateur de
 solutions - ou utilisez le menu **Projet** - et choisissez **Manage Conan Packages...**.
 
-![Menu Projet](.github/readme/fr-project-menu.png)
+![Menu Projet](readme/fr-project-menu.png)
 
 Une fenêtre de document dédiée à ce projet s'ouvre, avec un onglet **Parcourir** (tout ce que
 la source sélectionnée propose) et un onglet **Installé** (ce que le projet utilise déjà).
@@ -65,7 +65,7 @@ la source sélectionnée propose) et un onglet **Installé** (ce que le projet u
 
 ## 3. Parcourir et installer des bibliothèques
 
-![Onglet Parcourir](.github/readme/fr-browse.png)
+![Onglet Parcourir](readme/fr-browse.png)
 
 - **Source** (en haut à droite) : le remote Conan dont vient la liste. Les remotes sont ceux
   configurés dans Conan (`conan remote list`). Le bouton ⚙ ouvre les paramètres de l'extension
@@ -109,7 +109,7 @@ indépendantes du compilateur.
 
 ## 5. Retirer une bibliothèque d'un projet
 
-![Onglet Installé avec un paquet éditable](.github/readme/fr-installed-editable.png)
+![Onglet Installé avec un paquet éditable](readme/fr-installed-editable.png)
 
 L'onglet **Installé** liste les dépendances du projet courant, lues dans son `conandata.yml` -
 y compris les bibliothèques que la source sélectionnée ne connaît pas (paquet local ou
@@ -149,7 +149,7 @@ la machine qui utilisent ce `nom/version`. L'état est relu depuis Conan à chaq
 est une grille de type NuGet des remotes configurés sur la machine - la même liste que
 `conan remote list`.
 
-![Package Sources](.github/readme/fr-package-sources.png)
+![Package Sources](readme/fr-package-sources.png)
 
 | Bouton | Commande équivalente |
 |---|---|
@@ -174,7 +174,7 @@ paquets éditables ne sont pas touchés.
 
 Cliquez sur **Ajouter un remote...**.
 
-![Ajouter un remote](.github/readme/fr-add-remote.png)
+![Ajouter un remote](readme/fr-add-remote.png)
 
 **Remote Conan (URL)** - Artifactory, serveur Conan... : indiquez un *nom* et l'*URL*.
 
