@@ -67,6 +67,7 @@ namespace conan_vs_extension
             Loc.Initialize();
             ConanOutputPane.EnsureInitialized();
             await ConanToolWindowCommand.InitializeAsync(this);
+            await Packaging.CreatePackageCommand.InitializeAsync(this);
 
             ConanOptionsPage optionsPage = (ConanOptionsPage)GetDialogPage(typeof(ConanOptionsPage));
             GlobalSettings.ConanExecutablePath = optionsPage.ConanExecutablePath;

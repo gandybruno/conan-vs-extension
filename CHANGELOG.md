@@ -5,6 +5,21 @@ All notable changes to the Conan Visual Studio Extension are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Packaging a library.** A project that builds a static library or a DLL has a **Package**
+  tab in the Conan package manager window (name, version, license, public headers folder,
+  `.pdb`, configurations) and a **Create Conan Package** command in the Project menu and the
+  project's context menu. Each selected configuration is built by Visual Studio and exported
+  with `conan export-pkg` into the local Conan cache, under one `name/version`. Nothing is
+  uploaded.
+- **Toolset compatibility.** A packaged library can be used by projects built with a newer
+  MSVC toolset, except the static libraries compiled with `/GL`.
+- The version of a packaged library is stored in `version.txt`, its other settings in a
+  `package` section of `conandata.yml`; the generated library recipe reads both.
+
 ## [2.1.0] - 2026-10-10
 
 ### Added
