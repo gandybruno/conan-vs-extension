@@ -100,6 +100,28 @@ package the same way.
 At any point, use the refresh (🔄) button next to the search box to re-fetch the package
 list from the currently selected source.
 
+#### Removing and editing libraries
+
+The **Installed** tab lists the dependencies of the current project (its `conandata.yml`),
+whether or not the selected source knows them. **Retirer du projet** removes one from the
+project and re-runs `conan install`; the package stays in the Conan cache, so other projects
+are not affected.
+
+To work on the sources of a library your project uses, select it in **Installed** and check
+**Éditable**, then pick the folder holding the library's `conanfile.py`. This runs
+`conan editable add` and re-runs `conan install`, so the project is built against the local
+sources instead of the package from the Conan cache. The folder is shown under the package
+name, a pencil marks editable packages in the list, **Dossier...** changes the folder and
+unchecking the box goes back to the regular package.
+
+Requirements (Conan's, not the extension's): the recipe must define `layout()`, and the
+library must have been built once in its own folder (`conan build .`) so its generated files
+exist. Editable mode is stored in the Conan home, so it applies to every project on the
+machine that uses that `name/version`.
+
+The Conan cache itself can be emptied from **Tools > Options > Conan Package Manager >
+Package Sources** (**Nettoyer le cache...**).
+
 #### Configuring Package Sources
 
 The list of available packages comes entirely from the Conan remotes already configured

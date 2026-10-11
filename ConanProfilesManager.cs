@@ -53,8 +53,20 @@ namespace conan_vs_extension
          *
          * @throws NotSupportedException The toolset isn't one this extension has a known mapping for yet.
          */
-        private string getConanCompilerVersion(string platformToolset, string vsVersion)
+        private string getConanCompilerVersion(string platformToolset, string vsVersion, string vcToolsVersion)
         {
+            // The MSVC toolset really used by the project ($(VCToolsVersion), e.g. "14.44.35207")
+            // decides Conan's compiler.version: 14.0x -> 190, 14.1x -> 191 ... 14.4x -> 194, 14.5x -> 195.
+            // This also holds when a newer Visual Studio still builds with an older toolset (v143 in VS 2026).
+            if (!string.IsNullOrWhiteSpace(vcToolsVersion))
+            {
+                string[] parts = vcToolsVersion.Split('.');
+                if (parts.Length >= 2 && parts[0] == "14" && int.TryParse(parts[1], out int minor))
+                {
+                    return (190 + minor / 10).ToString();
+                }
+            }
+
             if (Version.TryParse(vsVersion, out Version parsedVersion))
             {
                 // https://github.com/conan-io/conan/issues/16239
@@ -126,6 +138,75 @@ namespace conan_vs_extension
             return "null";
         }
 
+        private static string EvaluateOrEmpty(VCConfiguration vcConfig, string expression)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            try
+            {
+                string value = vcConfig.Evaluate(expression)?.ToString() ?? string.Empty;
+                return value == expression ? string.Empty : value;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private static readonly HashSet<string> _toolsetWarnings = new HashSet<string>();
+
+        /**
+         * Tells the user (once per project and toolset) when the project does not use the platform
+         * toolset the running Visual Studio provides by default, or when its toolset is not installed:
+         * Conan then builds packages for that toolset's compiler.version, not for the IDE's own.
+         */
+        private static void WarnIfToolsetDiffers(string projectName, string toolset, string vsVersion, string vcToolsVersion, string compilerVersion)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            string defaultToolset = null;
+            if (Version.TryParse(vsVersion, out Version parsed))
+            {
+                switch (parsed.Major)
+                {
+                    case 18: defaultToolset = "v145"; break;
+                    case 17: defaultToolset = "v143"; break;
+                    case 16: defaultToolset = "v142"; break;
+                    case 15: defaultToolset = "v141"; break;
+                }
+            }
+
+            bool notInstalled = string.IsNullOrWhiteSpace(vcToolsVersion);
+            bool differs = defaultToolset != null && !string.Equals(toolset, defaultToolset, StringComparison.OrdinalIgnoreCase);
+            if (!notInstalled && !differs)
+            {
+                return;
+            }
+
+            if (!_toolsetWarnings.Add($"{projectName}|{toolset}|{vcToolsVersion}"))
+            {
+                return;
+            }
+
+            string nl = Environment.NewLine + Environment.NewLine;
+            string message = notInstalled
+                ? $"Le projet « {projectName} » utilise le toolset {toolset}, qui ne semble pas installé avec cette version de Visual Studio.{nl}" +
+                  $"Conan utilisera compiler.version={compilerVersion} d'après le mappage du toolset, et la compilation des paquets risque d'échouer.{nl}" +
+                  "Installez ce toolset (Visual Studio Installer) ou changez le « Jeu d'outils de plateforme » du projet."
+                : $"Le projet « {projectName} » utilise le toolset {toolset} (MSVC {vcToolsVersion}), alors que cette version de Visual Studio fournit {defaultToolset} par défaut.{nl}" +
+                  $"Conan utilisera compiler.version={compilerVersion} pour ce projet : les binaires des paquets doivent correspondre à ce compilateur.{nl}" +
+                  $"Pour utiliser {defaultToolset}, changez le « Jeu d'outils de plateforme » dans les propriétés du projet.";
+
+            ConanOutputPane.Log(message.Replace(nl, " "));
+
+            // A toolset that differs from the IDE's default is only informative (the package manager
+            // checks each package against the project's profile): log it. A toolset that is not
+            // installed will make builds fail, so that one is still shown.
+            if (notInstalled)
+            {
+                MessageBox.Show(message, "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         /**
          * Writes one Conan profile file per build configuration of project
          * (under its `.conan\` folder), only if the project already opted into Conan (has a
@@ -171,7 +252,9 @@ namespace conan_vs_extension
 
                                 string toolset = vcConfig.Evaluate("$(PlatformToolset)").ToString();
                                 string vsVersion = vcConfig.Evaluate("$(MSBuildVersion)").ToString();
-                                string compilerVersion = getConanCompilerVersion(toolset, vsVersion);
+                                string vcToolsVersion = EvaluateOrEmpty(vcConfig, "$(VCToolsVersion)");
+                                string compilerVersion = getConanCompilerVersion(toolset, vsVersion, vcToolsVersion);
+                                WarnIfToolsetDiffers(project.Name, toolset, vsVersion, vcToolsVersion, compilerVersion);
                                 string arch = getConanArch(vcConfig.Evaluate("$(PlatformName)").ToString());
                                 IVCRulePropertyStorage generalRule = vcConfig.Rules.Item("ConfigurationGeneral") as IVCRulePropertyStorage;
                                 string languageStandard = generalRule == null ? null : generalRule.GetEvaluatedPropertyValue("LanguageStandard");

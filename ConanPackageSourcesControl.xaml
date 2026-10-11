@@ -59,6 +59,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,10" Opacity="0.8"
@@ -119,5 +120,16 @@
             <Button x:Name="RemoveButton" Content="Supprimer" IsEnabled="False" Click="RemoveButton_Click"
                     Padding="12,4" Style="{StaticResource ThemedButtonStyle}"/>
         </StackPanel>
+
+        <Grid Grid.Row="3" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center" Opacity="0.8"
+                       Text="Cache local Conan : paquets et binaires déjà téléchargés ou compilés, partagés par tous les projets. Les paquets éditables ne sont pas touchés."/>
+            <Button x:Name="CleanCacheButton" Grid.Column="1" Content="Nettoyer le cache..." Click="CleanCacheButton_Click"
+                    Padding="12,4" Margin="12,0,0,0" Style="{StaticResource ThemedButtonStyle}"/>
+        </Grid>
     </Grid>
 </UserControl>
