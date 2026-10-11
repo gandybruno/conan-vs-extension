@@ -73,9 +73,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Works out of the box.** "Use System Conan" is now the default: the extension uses `conan` from the system PATH and the Package Manager is only locked when Conan cannot be found. ConanCenter is selected by default as package source.
 - The build is automatically postponed and re-triggered once a running Conan
-  install/update finishes, instead of racing with it.
+  install/update finishes, instead of racing with it. The command that was asked for (Build,
+  Rebuild, Clean, a single project, Start Debugging...) is the one re-issued.
 - Every `conan` process call is now bounded by a timeout, so a hung command can no longer
-  freeze the UI indefinitely.
+  freeze the UI indefinitely. `conan install` has no limit on its total duration (building a
+  large library from source can take long): it can be stopped with the **Cancel** button of
+  the progress overlay, which also stops the processes it started, and is stopped on its own
+  after 15 minutes without any output.
+- A missing default Conan profile is created automatically (`conan profile detect`) instead
+  of making the first install fail.
+- The proactive `conan install` (solution opened, project added, configuration switched) is
+  skipped when nothing changed since the last successful install of that configuration.
+- Conan profiles: a configuration with a custom name ("Debug-Static"...) gets a valid
+  `build_type`/`compiler.runtime_type` from the C runtime it links; `/std:c++latest` and an
+  unknown language standard no longer produce `compiler.cppstd=null`; the `ARM` and `ARM64EC`
+  platforms are mapped; a configuration that cannot be mapped is reported once in the Conan
+  pane instead of a message box at every build.
 - `conandata.yml` parsing is hardened and duplicate requirements are prevented.
 - The generated `conan_install.bat` no longer fails when `version.txt` is absent.
 - Restyled toolbar icons to match Visual Studio's flat look; the dialogs opened by the

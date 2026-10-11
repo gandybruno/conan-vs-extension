@@ -232,11 +232,18 @@ supprimez, l'extension cesse de modifier le fichier et vous pouvez l'éditer à 
 Comportements automatiques :
 
 - `conan install` s'exécute de façon proactive à l'ouverture d'une solution, à l'ajout d'un
-  projet ou au changement de configuration/profil actif. Les installations sont sérialisées
+  projet ou au changement de configuration/profil actif - et seulement si quelque chose a
+  changé depuis la dernière installation réussie de cette configuration (dépendances,
+  recette, profil, ou paquet absent du cache Conan). Les installations sont sérialisées
   pour que deux d'entre elles n'entrent jamais en concurrence sur le cache Conan.
-- Si vous lancez une **génération** pendant que Conan installe, elle est reportée puis
-  relancée automatiquement quand Conan a terminé.
+- Si vous lancez une **génération** pendant que Conan installe, elle est reportée, puis ce
+  que vous aviez demandé (Générer, Régénérer, un seul projet, F5...) est relancé
+  automatiquement quand Conan a terminé.
+- Un profil Conan par défaut manquant est créé pour vous (`conan profile detect`).
 - Chaque appel à `conan` est borné par un délai : une commande bloquée ne fige jamais l'IDE.
+  `conan install` n'a pas de durée limite - compiler une grosse bibliothèque prend le temps
+  qu'il faut - mais il peut être arrêté avec **Annuler**, et l'est s'il n'affiche plus rien
+  pendant 15 minutes.
 - Une recette laissée corrompue dans le cache Conan est supprimée et l'installation est
   retentée une fois.
 

@@ -227,11 +227,17 @@ extension stops modifying the file and you are free to edit it by hand.
 Automatic behaviors:
 
 - `conan install` runs proactively when a solution is opened, a project is added, or the
-  active configuration/profile changes. Installs are serialized so two of them never race on
+  active configuration/profile changes - and only when something changed since the last
+  successful install of that configuration (dependencies, recipe, profile, or a package
+  missing from the Conan cache). Installs are serialized so two of them never race on
   the Conan cache.
-- If you start a **Build** while Conan is installing, the build is postponed and restarted
-  automatically once Conan has finished.
+- If you start a **Build** while Conan is installing, the build is postponed and what you
+  asked for (Build, Rebuild, a single project, F5...) is restarted automatically once Conan has
+  finished.
+- A missing default Conan profile is created for you (`conan profile detect`).
 - Every `conan` call is bounded by a timeout so a hung command never freezes the IDE.
+  `conan install` has no time limit - building a large library takes as long as it takes -
+  but it can be stopped with **Cancel**, and is stopped when it prints nothing for 15 minutes.
 - A recipe left broken in the Conan cache is removed and the install retried once.
 
 ### IntelliSense
