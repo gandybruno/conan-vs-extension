@@ -37,7 +37,7 @@ namespace conan_vs_extension
     public partial class ConanPackageManagerControl : UserControl
     {
         /**
-         * Which of the two NuGet-style tabs is active.
+         * Which of the tabs is active.
          */
         private enum PackageTab
         {
@@ -48,7 +48,11 @@ namespace conan_vs_extension
             /**
              * Only the packages already required by this project (conandata.yml).
              */
-            Installed
+            Installed,
+            /**
+             * How this library project is itself published as a package (PackagePropertiesControl).
+             */
+            Package
         }
 
         /**
@@ -70,6 +74,7 @@ namespace conan_vs_extension
         private RootObject _jsonData;
         private PackageTab _currentTab = PackageTab.Browse;
         private List<PackageSourceEntry> _sources = new List<PackageSourceEntry>();
+        private Packaging.PackagePropertiesControl _packageProperties;
 
         // Whether a background fetch of the package source (remote list / local cache fallback)
         // is currently running. Deliberately NOT the same thing as "show LoadingOverlay": the
@@ -91,6 +96,7 @@ namespace conan_vs_extension
 
         public ConanPackageManagerControl(Project project)
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
             this.InitializeComponent();
             _project = project;
 
@@ -114,6 +120,11 @@ namespace conan_vs_extension
                     _ = ThreadHelper.JoinableTaskFactory.RunAsync(RefreshEditableMarkersAsync);
                 }
             };
+
+            if (IsSupportedProject() && Packaging.PackagePropertiesControl.IsLibraryProject(project))
+            {
+                PackageTabPanel.Visibility = Visibility.Visible;
+            }
 
             UpdateTabVisual();
             ToggleUIEnableState(IsConanInitialized());
@@ -388,6 +399,36 @@ namespace conan_vs_extension
             _ = ThreadHelper.JoinableTaskFactory.RunAsync(RefreshEditableMarkersAsync);
         }
 
+        private void PackageTabButton_Click(object sender, RoutedEventArgs e)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            ShowPackageTab();
+        }
+
+        /**
+         * Switches to the "Paquet" (Package) tab: the form describing this library project as a
+         * Conan package. No-op for a project that does not build a library.
+         */
+        public void ShowPackageTab()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (PackageTabPanel.Visibility != Visibility.Visible)
+            {
+                return;
+            }
+
+            if (_packageProperties == null)
+            {
+                _packageProperties = new Packaging.PackagePropertiesControl(_project);
+                PackageTabHost.Content = _packageProperties;
+            }
+
+            _packageProperties.Reload();
+            _currentTab = PackageTab.Package;
+            UpdateTabVisual();
+            UpdateLoadingOverlayVisibility();
+        }
+
         /**
          * Re-reads `conan editable list` and refreshes the editable markers of the package list.
          */
@@ -407,11 +448,21 @@ namespace conan_vs_extension
          */
         private void UpdateTabVisual()
         {
-            bool browseActive = _currentTab == PackageTab.Browse;
-            BrowseTabUnderline.Visibility = browseActive ? Visibility.Visible : Visibility.Hidden;
-            InstalledTabUnderline.Visibility = browseActive ? Visibility.Hidden : Visibility.Visible;
-            BrowseTabButton.Opacity = browseActive ? 1.0 : 0.7;
-            InstalledTabButton.Opacity = browseActive ? 0.7 : 1.0;
+            SetTabVisual(BrowseTabButton, BrowseTabUnderline, _currentTab == PackageTab.Browse);
+            SetTabVisual(InstalledTabButton, InstalledTabUnderline, _currentTab == PackageTab.Installed);
+            SetTabVisual(PackageTabButton, PackageTabUnderline, _currentTab == PackageTab.Package);
+
+            // The Package tab replaces the search row and the package list with its own form.
+            bool packageActive = _currentTab == PackageTab.Package;
+            SearchRow.Visibility = packageActive ? Visibility.Collapsed : Visibility.Visible;
+            PackagesContent.Visibility = packageActive ? Visibility.Collapsed : Visibility.Visible;
+            PackageTabHost.Visibility = packageActive ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private static void SetTabVisual(Button tabButton, Border underline, bool active)
+        {
+            underline.Visibility = active ? Visibility.Visible : Visibility.Hidden;
+            tabButton.Opacity = active ? 1.0 : 0.7;
         }
 
         /**
@@ -1243,6 +1294,7 @@ namespace conan_vs_extension
             PackagesListBox.IsEnabled = enabled;
             BrowseTabButton.IsEnabled = enabled;
             InstalledTabButton.IsEnabled = enabled;
+            PackageTabButton.IsEnabled = enabled;
             PackageSourceComboBox.IsEnabled = enabled;
 
             LibrarySearchComboBox.Text = enabled ? "" : Loc.T("Conan not found: click 'Configure' to set its path -->", "Conan introuvable : cliquez sur 'Configurer' pour définir son chemin -->");

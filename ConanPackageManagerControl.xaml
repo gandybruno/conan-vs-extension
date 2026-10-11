@@ -154,6 +154,11 @@
                     <Button x:Name="InstalledTabButton" Content="{local:Loc 'Installed', 'Installé'}" Click="InstalledTabButton_Click" Style="{StaticResource TabButtonStyle}"/>
                     <Border x:Name="InstalledTabUnderline" Height="2" Background="{DynamicResource {x:Static vsshell:VsBrushes.HighlightKey}}" Margin="4,4,20,0"/>
                 </StackPanel>
+                <!-- Only for a project that builds a library (see PackagePropertiesControl). -->
+                <StackPanel x:Name="PackageTabPanel" Orientation="Vertical" Visibility="Collapsed">
+                    <Button x:Name="PackageTabButton" Content="{local:Loc 'Package', 'Paquet'}" Click="PackageTabButton_Click" Style="{StaticResource TabButtonStyle}"/>
+                    <Border x:Name="PackageTabUnderline" Height="2" Background="{DynamicResource {x:Static vsshell:VsBrushes.HighlightKey}}" Margin="4,4,20,0"/>
+                </StackPanel>
             </StackPanel>
 
             <TextBlock x:Name="HeaderTitleTextBlock" Grid.Column="1" FontSize="19" FontWeight="Normal"
@@ -165,7 +170,7 @@
         <!-- Line 2: search box aligned with the package list column below it, source + settings/refresh
              on the right - like NuGet. Same column proportions ("*","8","*") as the content grid below
              so the search box lines up exactly above the package list. -->
-        <Grid Grid.Row="1" Margin="0,0,0,8">
+        <Grid x:Name="SearchRow" Grid.Row="1" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="8"/>
@@ -221,8 +226,11 @@
             </TextBlock>
         </Border>
 
+        <!-- The "Package" tab (PackagePropertiesControl), shown in place of the search row and the package list. -->
+        <ContentControl x:Name="PackageTabHost" Grid.Row="5" Margin="0,10,0,0" Visibility="Collapsed"/>
+
         <!-- Main content: package list on the left, details on the right, split 50/50 like NuGet -->
-        <Grid Grid.Row="5" Margin="0,10,0,0">
+        <Grid x:Name="PackagesContent" Grid.Row="5" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="8"/>

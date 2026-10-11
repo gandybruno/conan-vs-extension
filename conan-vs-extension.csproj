@@ -59,8 +59,13 @@
     <Compile Include="ConanDataFile.cs" />
     <Compile Include="ManagedFileGuard.cs" />
     <Compile Include="Packaging\ConanProfileFile.cs" />
+    <Compile Include="Packaging\CreatePackageCommand.cs" />
+    <Compile Include="Packaging\PackageCreationReport.cs" />
     <Compile Include="Packaging\PackageCreator.cs" />
     <Compile Include="Packaging\PackagePlanner.cs" />
+    <Compile Include="Packaging\PackagePropertiesControl.xaml.cs">
+      <DependentUpon>PackagePropertiesControl.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Packaging\PackageSettings.cs" />
     <Compile Include="Packaging\VcProjectInspector.cs" />
     <Compile Include="Packaging\VsProjectBuilder.cs" />
@@ -115,6 +120,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="ConanPackageSourcesControl.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Packaging\PackagePropertiesControl.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

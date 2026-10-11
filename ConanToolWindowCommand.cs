@@ -112,14 +112,14 @@ namespace conan_vs_extension
                 return;
             }
 
-            OpenPackageManagerDocumentWindow(project);
+            OpenPackageManager(project);
         }
 
         /**
          * Resolves the currently selected project in Solution Explorer, if any. Mirrors what
          * right-clicking a project node and choosing "Manage NuGet Packages..." resolves to.
          */
-        private static Project GetSelectedProject(DTE dte)
+        internal static Project GetSelectedProject(DTE dte)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
@@ -150,8 +150,10 @@ namespace conan_vs_extension
          * for the given project, following the same IVsUIShell.CreateDocumentWindow pattern NuGet's
          * own NuGetPackage.CreateDocWindowAsync uses to open "Manage NuGet Packages..." as a tab in
          * the main editing area instead of a docked tool window.
+         *
+         * @return The control shown in the new window.
          */
-        private void OpenPackageManagerDocumentWindow(Project project)
+        internal ConanPackageManagerControl OpenPackageManager(Project project)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
@@ -257,6 +259,7 @@ namespace conan_vs_extension
             }
 
             ErrorHandler.ThrowOnFailure(windowFrame.Show());
+            return control;
         }
     }
 }
