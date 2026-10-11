@@ -225,7 +225,7 @@ namespace conan_vs_extension
                     }
                 }
 
-                ConanOutputPane.Log(Loc.T($"  -> {libraries.Count} librarie(s) found.", $"  -> {libraries.Count} bibliothèque(s) trouvée(s)."));
+                ConanOutputPane.Log(Loc.T($"  -> {libraries.Count} package(s) found.", $"  -> {libraries.Count} bibliothèque(s) trouvée(s)."));
                 return libraries;
             }
             catch (Exception ex)
@@ -589,7 +589,27 @@ namespace conan_vs_extension
             return text;
         }
 
+        /**
+         * Serializes the commands that add or remove a recipe in the Conan cache on behalf of the
+         * package browser (reading a recipe's metadata, `conan graph info`): run concurrently on the
+         * same reference they collide ("Reference ... already exists").
+         */
+        internal static readonly System.Threading.SemaphoreSlim RecipeCacheGate = new System.Threading.SemaphoreSlim(1, 1);
+
         private static async Task<string> FetchRecipeTextAsync(string libName, string version, string remoteName)
+        {
+            await RecipeCacheGate.WaitAsync();
+            try
+            {
+                return await FetchRecipeTextCoreAsync(libName, version, remoteName);
+            }
+            finally
+            {
+                RecipeCacheGate.Release();
+            }
+        }
+
+        private static async Task<string> FetchRecipeTextCoreAsync(string libName, string version, string remoteName)
         {
             string reference = $"{libName}/{version}";
             string conanPath = GlobalSettings.GetResolvedConanExecutablePath();

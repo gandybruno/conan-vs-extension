@@ -60,7 +60,18 @@ namespace conan_vs_extension
                 string arguments = $"graph info --requires=\"{name}/{version}\" -pr:h=\"{profileArgument}\" -pr:b=default{remoteArgument} --build=missing --format=json";
                 ConanOutputPane.Log($"conan {arguments}");
 
-                (int exitCode, string stdout, string stderr) = await ConanRemoteHelper.RunConanAsync(arguments, 30000, projectDirectory);
+                int exitCode;
+                string stdout;
+                string stderr;
+                await ConanRemoteHelper.RecipeCacheGate.WaitAsync();
+                try
+                {
+                    (exitCode, stdout, stderr) = await ConanRemoteHelper.RunConanAsync(arguments, 30000, projectDirectory);
+                }
+                finally
+                {
+                    ConanRemoteHelper.RecipeCacheGate.Release();
+                }
 
                 int jsonStart = stdout.IndexOf('{');
                 if (jsonStart < 0)
