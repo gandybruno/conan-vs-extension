@@ -490,13 +490,13 @@
 
                     <TextBlock x:Name="PackageHomepageLine" Margin="0,0,0,6" Visibility="Collapsed">
                         <Hyperlink x:Name="PackageHomepageHyperlink" RequestNavigate="Hyperlink_RequestNavigate">
-                            Site officiel du projet
+                            <Run Text="{local:Loc 'Project website', 'Site officiel du projet'}"/>
                         </Hyperlink>
                     </TextBlock>
 
                     <TextBlock Margin="0,0,0,6">
                         <Hyperlink x:Name="MoreInfoHyperlink" RequestNavigate="Hyperlink_RequestNavigate">
-                            Plus d'informations sur ce package
+                            <Run Text="{local:Loc 'More information about this package', 'Plus d\'informations sur ce package'}"/>
                         </Hyperlink>
                     </TextBlock>
                 </StackPanel>

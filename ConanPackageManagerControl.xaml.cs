@@ -1271,7 +1271,7 @@ namespace conan_vs_extension
                     await LoadLibrariesFromJsonAsync();
 
                     if (popUp)
-                        MessageBox.Show(Loc.T($"Conan package list updated ({libraries.Count} librarie(s)) from '{source.DisplayName}'.", $"Liste des packages conan mise à jour ({libraries.Count} bibliothèque(s)) depuis '{source.DisplayName}'."), "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+                        MessageBox.Show(Loc.T($"Conan package list updated ({libraries.Count} package(s)) from '{source.DisplayName}'.", $"Liste des packages conan mise à jour ({libraries.Count} bibliothèque(s)) depuis '{source.DisplayName}'."), "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
@@ -1291,7 +1291,7 @@ namespace conan_vs_extension
                     int cacheCount = cacheLibraries?.Count ?? 0;
                     MessageBox.Show(
                         Loc.T($"The remote '{source.DisplayName}' is unreachable (offline?).\n" +
-                              $"{cacheCount} librarie(s) shown from the local Conan cache (already downloaded packages).",
+                              $"{cacheCount} package(s) shown from the local Conan cache (already downloaded packages).",
                               $"Le remote '{source.DisplayName}' est injoignable (hors ligne ?).\n" +
                               $"{cacheCount} bibliothèque(s) affichée(s) depuis le cache Conan local (paquets déjà téléchargés)."),
                         "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -1517,7 +1517,7 @@ namespace conan_vs_extension
         public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
         {
             string name = value as string ?? string.Empty;
-            string text = "Package Conan";
+            string text = Loc.T("Conan package", "Package Conan");
 
             if (ShowInstalledVersions && InstalledVersions.TryGetValue(name, out string version) && !string.IsNullOrEmpty(version))
             {
