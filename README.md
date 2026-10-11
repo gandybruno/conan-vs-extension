@@ -1,6 +1,6 @@
 # Conan Visual Studio Extension for Conan 2
 
-![Build](https://github.com/conan-io/conan-vs-extension/actions/workflows/main.yml/badge.svg?branch=develop2)
+![Build](https://github.com/gandybruno/conan-vs-extension/actions/workflows/main.yml/badge.svg?branch=develop)
 
 Conan, the C and C++ package manager, is now directly integrated into your IDE. List
 available libraries, install, and use them without leaving Visual Studio.
