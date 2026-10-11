@@ -28,40 +28,62 @@ namespace conan_vs_extension.Packaging
         }
 
         /**
-         * Checks what the user entered.
-         *
-         * @return The problems to fix, one sentence each; empty when everything is valid.
+         * The settings a user can get wrong.
          */
-        public static List<string> Validate(PackageSettings settings, string version)
+        public enum Field
         {
-            var problems = new List<string>();
+            Name,
+            Version,
+            Headers,
+            Configurations
+        }
+
+        /**
+         * Something to fix before the package can be created.
+         */
+        public class Problem
+        {
+            public Problem(Field field, string message)
+            {
+                Field = field;
+                Message = message;
+            }
+
+            public Field Field { get; }
+
+            /** One sentence, shown to the user. */
+            public string Message { get; }
+        }
+
+        /**
+         * Checks what the user entered. The license and the description are optional.
+         *
+         * @return The problems to fix; empty when everything is valid.
+         */
+        public static List<Problem> Validate(PackageSettings settings, string version)
+        {
+            var problems = new List<Problem>();
 
             if (!_validName.IsMatch(settings.Name ?? string.Empty))
             {
-                problems.Add(Loc.T("The name must be lowercase, at least 2 characters long, with only letters, digits and _ + . -",
-                                   "Le nom doit être en minuscules, d'au moins 2 caractères, avec uniquement des lettres, chiffres et _ + . -"));
+                problems.Add(new Problem(Field.Name, Loc.T("The name must be lowercase, at least 2 characters long, with only letters, digits and _ + . -",
+                                   "Le nom doit être en minuscules, d'au moins 2 caractères, avec uniquement des lettres, chiffres et _ + . -")));
             }
 
             if (!_validVersion.IsMatch(version ?? string.Empty))
             {
-                problems.Add(Loc.T("The version is required (letters, digits and _ + . - only), e.g. 1.0.0",
-                                   "La version est obligatoire (lettres, chiffres et _ + . - uniquement), par exemple 1.0.0"));
-            }
-
-            if (string.IsNullOrWhiteSpace(settings.License))
-            {
-                problems.Add(Loc.T("The license is required, e.g. MIT or Proprietary.",
-                                   "La licence est obligatoire, par exemple MIT ou Proprietary."));
+                problems.Add(new Problem(Field.Version, Loc.T("The version is required (letters, digits and _ + . - only), e.g. 1.0.0",
+                                   "La version est obligatoire (lettres, chiffres et _ + . - uniquement), par exemple 1.0.0")));
             }
 
             if (string.IsNullOrWhiteSpace(settings.Headers))
             {
-                problems.Add(Loc.T("The public headers folder is required.", "Le dossier des headers publics est obligatoire."));
+                problems.Add(new Problem(Field.Headers, Loc.T("The public headers folder is required.", "Le dossier des headers publics est obligatoire.")));
             }
 
             if (settings.Configurations == null || settings.Configurations.Count == 0)
             {
-                problems.Add(Loc.T("Select at least one configuration to package.", "Sélectionnez au moins une configuration à empaqueter."));
+                problems.Add(new Problem(Field.Configurations, Loc.T("Select at least one configuration to package.", "Sélectionnez au moins une configuration à empaqueter.")));
             }
 
             return problems;

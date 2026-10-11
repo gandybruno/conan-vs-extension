@@ -286,7 +286,7 @@ an application).
 |---|---|
 | **Name** | Name of the package, in lowercase. Suggested from the project name. |
 | **Version** | Stored in `version.txt`, next to the project. |
-| **License** | Required, e.g. `MIT` or `Proprietary`. |
+| **License** | Optional, e.g. `MIT` or `Proprietary`. |
 | **Description** | Optional. |
 | **Public headers folder** | Relative to the project (default `include`). Its `*.h`, `*.hpp`... files are packaged with their subfolders. |
 | **Include the debug symbols (.pdb)** | Packages the `.pdb` next to the binaries. |

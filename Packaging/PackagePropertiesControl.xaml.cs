@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using EnvDTE;
 using Microsoft.VisualStudio.Shell;
 
@@ -101,9 +102,10 @@ namespace conan_vs_extension.Packaging
             ConfigurationsItemsControl.ItemsSource = _configurations;
 
             ShowNotice(projectDirectory);
-            StatusTextBlock.Text = saved == null
+            ClearHighlights();
+            ShowStatus(saved == null
                 ? Loc.T("Not saved yet: these are suggested values.", "Pas encore enregistré : ce sont des valeurs proposées.")
-                : string.Empty;
+                : null);
         }
 
         /**
@@ -148,6 +150,11 @@ namespace conan_vs_extension.Packaging
                 notice = Loc.T("conandata.yml was modified by hand (its two comment lines at the top were removed): the extension no longer writes it, so this form is read-only.",
                                "conandata.yml a été modifié à la main (ses deux lignes de commentaire en tête ont été retirées) : l'extension ne l'écrit plus, ce formulaire est donc en lecture seule.");
             }
+            else if (!GlobalSettings.IsConanAvailable())
+            {
+                notice = Loc.T("Conan was not found: the settings can be saved, but the package cannot be created. Set its path in Tools > Options > Conan Package Manager.",
+                               "Conan est introuvable : les réglages peuvent être enregistrés, mais le paquet ne peut pas être créé. Indiquez son chemin dans Outils > Options > Conan Package Manager.");
+            }
             else if (!ManagedFileGuard.CanWrite(Path.Combine(projectDirectory, "conanfile.py")))
             {
                 notice = Loc.T("conanfile.py was modified by hand: the extension no longer regenerates it. \"Create package\" uses your recipe, which may ignore the settings below.",
@@ -170,7 +177,7 @@ namespace conan_vs_extension.Packaging
 
             PackageSettings settings = ConanDataFile.Load(ProjectDirectory).Package ?? new PackageSettings();
             settings.Name = NameTextBox.Text.Trim();
-            settings.License = LicenseTextBox.Text.Trim();
+            settings.License = string.IsNullOrWhiteSpace(LicenseTextBox.Text) ? null : LicenseTextBox.Text.Trim();
             settings.Description = string.IsNullOrWhiteSpace(DescriptionTextBox.Text) ? null : DescriptionTextBox.Text.Trim();
             settings.Headers = HeadersTextBox.Text.Trim().Replace('\\', '/');
             settings.Pdb = PdbCheckBox.IsChecked == true;
@@ -191,10 +198,16 @@ namespace conan_vs_extension.Packaging
             PackageSettings settings = ReadForm();
             string version = VersionTextBox.Text.Trim();
 
-            List<string> problems = PackagePlanner.Validate(settings, version);
+            ClearHighlights();
+            List<PackagePlanner.Problem> problems = PackagePlanner.Validate(settings, version);
             if (problems.Count > 0)
             {
-                StatusTextBlock.Text = string.Join("\n", problems);
+                foreach (PackagePlanner.Problem problem in problems)
+                {
+                    Highlight(problem.Field);
+                }
+
+                ShowStatus(string.Join("\n", problems.Select(problem => problem.Message)), isError: true);
                 return false;
             }
 
@@ -207,9 +220,64 @@ namespace conan_vs_extension.Packaging
             }
 
             ShowNotice(projectDirectory);
-            StatusTextBlock.Text = Loc.T("Saved (conandata.yml, version.txt, conanfile.py).", "Enregistré (conandata.yml, version.txt, conanfile.py).");
+            ShowStatus(Loc.T("Saved (conandata.yml, version.txt, conanfile.py).", "Enregistré (conandata.yml, version.txt, conanfile.py)."));
             return true;
         }
+
+        // Readable on the light and the dark themes alike.
+        private static readonly Brush _errorBrush = new SolidColorBrush(Color.FromRgb(0xE5, 0x48, 0x4D));
+
+        /**
+         * Shows a message above the buttons (nothing when text is null), in red for an error.
+         */
+        private void ShowStatus(string text, bool isError = false)
+        {
+            StatusTextBlock.Text = text ?? string.Empty;
+            StatusTextBlock.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
+            if (isError)
+            {
+                StatusTextBlock.Foreground = _errorBrush;
+            }
+            else
+            {
+                StatusTextBlock.ClearValue(TextBlock.ForegroundProperty);
+            }
+        }
+
+        /**
+         * Marks the control of an invalid setting in red and moves the keyboard to the first one.
+         */
+        private void Highlight(PackagePlanner.Field field)
+        {
+            if (field == PackagePlanner.Field.Configurations)
+            {
+                ConfigurationsHeading.Foreground = _errorBrush;
+                return;
+            }
+
+            TextBox textBox = field == PackagePlanner.Field.Name ? NameTextBox
+                            : field == PackagePlanner.Field.Version ? VersionTextBox
+                            : HeadersTextBox;
+            bool isFirst = !FieldTextBoxes.Any(box => box.BorderBrush == _errorBrush);
+            textBox.BorderBrush = _errorBrush;
+            textBox.BorderThickness = new Thickness(2);
+            if (isFirst)
+            {
+                textBox.Focus();
+            }
+        }
+
+        private void ClearHighlights()
+        {
+            ConfigurationsHeading.ClearValue(TextBlock.ForegroundProperty);
+            foreach (TextBox textBox in FieldTextBoxes)
+            {
+                textBox.ClearValue(Control.BorderBrushProperty);
+                textBox.ClearValue(Control.BorderThicknessProperty);
+            }
+        }
+
+        private TextBox[] FieldTextBoxes => new[] { NameTextBox, VersionTextBox, HeadersTextBox };
 
         private void SaveButton_Click(object sender, RoutedEventArgs e)
         {
@@ -268,7 +336,7 @@ namespace conan_vs_extension.Packaging
                 _cancellation = null;
             }
 
-            StatusTextBlock.Text = PackageCreationReport.Describe(result);
+            ShowStatus(PackageCreationReport.Describe(result), isError: !result.Success && !result.Cancelled);
             PackageCreationReport.Show(result);
         }
 

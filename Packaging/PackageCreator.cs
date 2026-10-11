@@ -84,10 +84,10 @@ namespace conan_vs_extension.Packaging
                                      "Ce projet n'a pas encore de réglages de paquet : remplissez d'abord l'onglet Paquet."));
             }
 
-            List<string> problems = PackagePlanner.Validate(settings, version);
+            List<PackagePlanner.Problem> problems = PackagePlanner.Validate(settings, version);
             if (problems.Count > 0)
             {
-                return Failure(string.Join("\n", problems));
+                return Failure(string.Join("\n", problems.Select(problem => problem.Message)));
             }
 
             // The profiles give the Conan settings of each configuration; they are (re)written

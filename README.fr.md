@@ -295,7 +295,7 @@ Packages...** sur le projet : un onglet **Paquet** apparaît à côté de **Parc
 |---|---|
 | **Nom** | Nom du paquet, en minuscules. Proposé à partir du nom du projet. |
 | **Version** | Enregistrée dans `version.txt`, à côté du projet. |
-| **Licence** | Obligatoire, par exemple `MIT` ou `Proprietary`. |
+| **Licence** | Facultative, par exemple `MIT` ou `Proprietary`. |
 | **Description** | Facultative. |
 | **Dossier des headers publics** | Relatif au projet (`include` par défaut). Ses fichiers `*.h`, `*.hpp`... sont empaquetés avec leurs sous-dossiers. |
 | **Inclure les symboles de débogage (.pdb)** | Empaquette les `.pdb` à côté des binaires. |

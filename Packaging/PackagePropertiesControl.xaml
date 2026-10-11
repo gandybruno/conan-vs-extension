@@ -68,7 +68,7 @@
 
                         <TextBlock Grid.Row="2" Text="{local:Loc 'License', 'Licence'}" Style="{StaticResource FieldLabelStyle}"/>
                         <TextBox x:Name="LicenseTextBox" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource FieldStyle}"
-                                 ToolTip="{local:Loc 'For example MIT, Apache-2.0 or Proprietary.', 'Par exemple MIT, Apache-2.0 ou Proprietary.'}"/>
+                                 ToolTip="{local:Loc 'Optional. For example MIT, Apache-2.0 or Proprietary.', 'Facultative. Par exemple MIT, Apache-2.0 ou Proprietary.'}"/>
 
                         <TextBlock Grid.Row="3" Text="{local:Loc 'Description', 'Description'}" Style="{StaticResource FieldLabelStyle}"/>
                         <TextBox x:Name="DescriptionTextBox" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource FieldStyle}"/>
@@ -86,7 +86,7 @@
                               Content="{local:Loc 'Usable by projects built with a newer MSVC toolset', 'Utilisable par les projets compilés avec un toolset MSVC plus récent'}"
                               ToolTip="{local:Loc 'A project built with a newer Visual Studio can use these binaries instead of asking for its own. Never the other way round.', 'Un projet compilé avec un Visual Studio plus récent peut utiliser ces binaires au lieu de réclamer les siens. Jamais l\'inverse.'}"/>
 
-                    <TextBlock FontWeight="SemiBold" Margin="0,0,0,6" Text="{local:Loc 'Configurations to package', 'Configurations à empaqueter'}"/>
+                    <TextBlock x:Name="ConfigurationsHeading" FontWeight="SemiBold" Margin="0,0,0,6" Text="{local:Loc 'Configurations to package', 'Configurations à empaqueter'}"/>
                     <ItemsControl x:Name="ConfigurationsItemsControl" Margin="0,0,0,14">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -100,14 +100,15 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
+                    <!-- Above the buttons, so the answer to a click is in view next to them. -->
+                    <TextBlock x:Name="StatusTextBlock" TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed"/>
+
                     <StackPanel Orientation="Horizontal">
                         <Button x:Name="SaveButton" Content="{local:Loc 'Save', 'Enregistrer'}" Padding="14,4" Click="SaveButton_Click" Style="{StaticResource ThemedButtonStyle}"
                                 ToolTip="{local:Loc 'Writes conandata.yml, version.txt and the recipe (conanfile.py).', 'Écrit conandata.yml, version.txt et la recette (conanfile.py).'}"/>
                         <Button x:Name="CreateButton" Content="{local:Loc 'Create package', 'Créer le paquet'}" Margin="12,0,0,0" Padding="14,4" Click="CreateButton_Click" Style="{StaticResource ThemedButtonStyle}"
                                 ToolTip="{local:Loc 'Saves, builds the selected configurations and packages them into the local Conan cache.', 'Enregistre, compile les configurations sélectionnées et les empaquette dans le cache Conan local.'}"/>
                     </StackPanel>
-
-                    <TextBlock x:Name="StatusTextBlock" TextWrapping="Wrap" Margin="0,12,0,0"/>
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
