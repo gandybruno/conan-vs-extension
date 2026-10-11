@@ -5,7 +5,7 @@ All notable changes to the Conan Visual Studio Extension are documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] - 2026-10-11
 
 ### Added
 
@@ -19,11 +19,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   MSVC toolset, except the static libraries compiled with `/GL`.
 - The version of a packaged library is stored in `version.txt`, its other settings in a
   `package` section of `conandata.yml`; the generated library recipe reads both.
-
-## [2.1.0] - 2026-10-10
-
-### Added
-
 - **NuGet-style Package Manager.** Right-click a project (or use the **Project** menu) and
   choose **Manage Conan Packages...** to open a per-project document window with
   **Browse**/**Installed** tabs, a search box and a package details panel. **Installed** lists
