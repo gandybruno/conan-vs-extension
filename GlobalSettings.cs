@@ -12,7 +12,8 @@ namespace conan_vs_extension{
      * Process-wide (in-memory, static) settings for the extension. Two different persistence
      * strategies are used side by side here, for two different reasons:
      *
-     * - ConanExecutablePath is backed by ConanOptionsPage's DialogPage persistence, which\r\n     * only flushes to disk when Tools > Options is closed with OK.
+     * - ConanExecutablePath is backed by ConanOptionsPage's DialogPage persistence, which
+     * only flushes to disk when Tools > Options is closed with OK.
      * - SelectedPackageSourceName and GitLabRemoteTokensRaw are
      * written continuously at runtime (every time the user picks a different package source, or
      * types a GitLab token into the "browse" prompt) and are instead persisted immediately to a

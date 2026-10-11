@@ -10,20 +10,15 @@ using Newtonsoft.Json.Linq;
 namespace conan_vs_extension
 {
     /**
-     * Reads the Conan remotes already configured on this machine (`conan remote list`) so the
-     * plugin can auto-fill its own GitLab URL / project ID settings instead of requiring the
-     * user to type them in a second time. Conan already knows the remote's address - it needs it
-     * for `conan install` - so we just parse it back out of the CLI output.
+     * Everything the extension asks the `conan` command line about remotes and recipes: listing,
+     * adding, editing and removing remotes, logging in and out, listing the packages of a remote
+     * or of the local cache, and reading a recipe's metadata. Also home to the process runner
+     * (RunConanAsync) the other helpers use, which bounds every call with a timeout.
      *
-     * This intentionally only recovers the URL and project ID. Conan does not expose stored
-     * remote credentials (PRIVATE-TOKEN / passwords) through `conan remote list` for security
-     * reasons, so the token still has to be entered manually in Tools > Options.
-     *
-     * Also note this only helps populate the settings used for "browse everything" against the
-     * GitLab Packages REST API (see ConanPackageManagerControl.FetchLibrariesFromGitLabAsync) -
-     * GitLab's own Conan v2 protocol implementation does not support a real wildcard "list all"
-     * search (confirmed: `q=*` returns nothing, `q=he*` works fine), so that REST API is still
-     * needed for the "Parcourir" tab. See the conversation history / README for details.
+     * Conan does not expose stored remote credentials through `conan remote list`, and GitLab's
+     * Conan endpoint does not support a bare wildcard search (`q=*` returns nothing, `q=he*`
+     * works): GitLab remotes are therefore also browsed through GitLab's Packages REST API, with
+     * a per-remote token (see ConanPackageManagerControl.FetchLibrariesFromGitLabPackagesApiAsync).
      */
     public static class ConanRemoteHelper
     {
