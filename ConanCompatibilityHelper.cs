@@ -60,6 +60,8 @@ namespace conan_vs_extension
                 string arguments = $"graph info --requires=\"{name}/{version}\" -pr:h=\"{profileArgument}\" -pr:b=default{remoteArgument} --build=missing --format=json";
                 ConanOutputPane.Log($"conan {arguments}");
 
+                await ProjectConfigurationManager.EnsureDefaultProfileAsync();
+
                 int exitCode;
                 string stdout;
                 string stderr;

@@ -39,6 +39,25 @@ namespace conan_vs_extension
         private readonly IVsSolutionBuildManager2 _solutionBuildManager;
         private uint _updateSolutionEventsCookie;
 
+        // The command that started the build being postponed (Build, Rebuild, Clean, a single
+        // project, F5...), so that exact command is re-issued once Conan has finished - see
+        // OnBeforeCommandExecute / UpdateSolution_Begin. Kept as a field: EnvDTE event sources
+        // stop firing once garbage collected.
+        private readonly CommandEvents _commandEvents;
+        private string _lastBuildCommandGuid;
+        private int _lastBuildCommandId;
+        private DateTime _lastBuildCommandTime;
+        private string _replayCommandGuid;
+        private int _replayCommandId;
+        private bool _restartScheduled;
+
+        private static readonly string Std97CommandSet = VSConstants.GUID_VSStandardCommandSet97.ToString("B");
+        private static readonly string Std2KCommandSet = VSConstants.VSStd2K.ToString("B");
+
+        // A recorded command only explains a build that starts shortly after it (a "save changes?"
+        // or "projects are out of date" prompt can sit in between).
+        private static readonly TimeSpan BuildCommandMaxAge = TimeSpan.FromMinutes(2);
+
         public BuildEventsHandler(DTE dte)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -48,7 +67,6 @@ namespace conan_vs_extension
             _profiles_manager = new ConanProfilesManager();
 
             // Subscribe to compilation events
-            _buildEvents.OnBuildDone += OnBuildDone;
             _buildEvents.OnBuildProjConfigBegin += OnBuildProjConfigBegin;
             _buildEvents.OnBuildProjConfigDone += OnBuildProjConfigDone;
 
@@ -63,6 +81,71 @@ namespace conan_vs_extension
             // IVsUpdateSolutionEvents.OnActiveProjectCfgChange callback.
             _solutionBuildManager = Microsoft.VisualStudio.Shell.ServiceProvider.GlobalProvider.GetService(typeof(SVsSolutionBuildManager)) as IVsSolutionBuildManager2;
             _solutionBuildManager?.AdviseUpdateSolutionEvents(this, out _updateSolutionEventsCookie);
+
+            _commandEvents = _dte.Events.CommandEvents;
+            _commandEvents.BeforeExecute += OnBeforeCommandExecute;
+        }
+
+        /**
+         * Remembers the last command that starts a build (or a clean, or a debug session, which
+         * builds first), so UpdateSolution_Begin knows what to re-issue if it has to postpone it.
+         * Fires for every command Visual Studio executes, keystrokes included: stay cheap.
+         */
+        private void OnBeforeCommandExecute(string Guid, int ID, object CustomIn, object CustomOut, ref bool CancelDefault)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            bool startsDebugging = false;
+            if (string.Equals(Guid, Std97CommandSet, StringComparison.OrdinalIgnoreCase))
+            {
+                switch ((VSConstants.VSStd97CmdID)ID)
+                {
+                    case VSConstants.VSStd97CmdID.BuildSln:
+                    case VSConstants.VSStd97CmdID.RebuildSln:
+                    case VSConstants.VSStd97CmdID.CleanSln:
+                    case VSConstants.VSStd97CmdID.BuildSel:
+                    case VSConstants.VSStd97CmdID.RebuildSel:
+                    case VSConstants.VSStd97CmdID.CleanSel:
+                    case VSConstants.VSStd97CmdID.BuildCtx:
+                    case VSConstants.VSStd97CmdID.RebuildCtx:
+                    case VSConstants.VSStd97CmdID.CleanCtx:
+                        break;
+                    case VSConstants.VSStd97CmdID.Start:
+                    case VSConstants.VSStd97CmdID.StartNoDebug:
+                    case VSConstants.VSStd97CmdID.StepInto:
+                    case VSConstants.VSStd97CmdID.StepOver:
+                        startsDebugging = true;
+                        break;
+                    default:
+                        return;
+                }
+            }
+            else if (string.Equals(Guid, Std2KCommandSet, StringComparison.OrdinalIgnoreCase))
+            {
+                switch ((VSConstants.VSStd2KCmdID)ID)
+                {
+                    case VSConstants.VSStd2KCmdID.PROJSTARTDEBUG:
+                    case VSConstants.VSStd2KCmdID.PROJSTEPINTO:
+                        startsDebugging = true;
+                        break;
+                    default:
+                        return;
+                }
+            }
+            else
+            {
+                return;
+            }
+
+            // While a debug session is running these mean Continue/Step: no build follows.
+            if (startsDebugging && _dte.Debugger.CurrentMode != dbgDebugMode.dbgDesignMode)
+            {
+                return;
+            }
+
+            _lastBuildCommandGuid = Guid;
+            _lastBuildCommandId = ID;
+            _lastBuildCommandTime = DateTime.UtcNow;
         }
 
         private bool IsConanEnabledForProject(string projectName)
@@ -84,9 +167,8 @@ namespace conan_vs_extension
             Project invokedProject = ProjectConfigurationManager.GetProjectByName(_dte, Project);
             _profiles_manager.GenerateProfilesForProject(invokedProject);
 
-            // We always overrwrite the script for the prebuild event
-            // the ps1 is always overwritten but the event is only added if no conan_install.ps1 is found
-            // in the prebuild events
+            // conan_install.bat is always overwritten, but the pre-build event is only added
+            // when none of the project's pre-build events calls it yet.
             _ = ProjectConfigurationManager.SaveConanPrebuildEventsAllConfigAsync(invokedProject);
         }
 
@@ -106,12 +188,6 @@ namespace conan_vs_extension
             // maybe we can inject the dependency to the project via a prebuild event? 
             // with a script?
             _ = ProjectConfigurationManager.InjectConanDepsAsync(invokedProject, config);
-        }
-
-        private void OnBuildDone(vsBuildScope Scope, vsBuildAction Action)
-        {
-            var message = "OnBuildDone";
-            System.Diagnostics.Debug.WriteLine(message);
         }
 
         private void OnSolutionOpened()
@@ -164,7 +240,7 @@ namespace conan_vs_extension
                     return;
                 }
 
-                await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(project, activeConfig, showErrors: false);
+                await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(project, activeConfig, force: false);
             }
             catch (Exception ex)
             {
@@ -222,6 +298,17 @@ namespace conan_vs_extension
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
+            // Which command started this build, if it is known (consumed either way: it only
+            // explains this build, not a later one).
+            string commandGuid = null;
+            int commandId = 0;
+            if (_lastBuildCommandGuid != null && DateTime.UtcNow - _lastBuildCommandTime < BuildCommandMaxAge)
+            {
+                commandGuid = _lastBuildCommandGuid;
+                commandId = _lastBuildCommandId;
+            }
+            _lastBuildCommandGuid = null;
+
             Microsoft.VisualStudio.Threading.JoinableTask[] pending = ConanInstallTracker.GetPending();
             if (pending.Length == 0)
             {
@@ -230,6 +317,17 @@ namespace conan_vs_extension
 
             pfCancelUpdate = 1;
             ConanOutputPane.Log(Loc.T("Build postponed: a Conan install/update is still running. The build will restart automatically once it has finished.", "Compilation reportée : une installation/mise à jour Conan est encore en cours. La compilation redémarrera automatiquement une fois celle-ci terminée."));
+
+            // Re-issue what the user asked for (Rebuild, a single project, F5...), not a plain
+            // "Build Solution". Asked again while already waiting: the latest request wins and
+            // is issued only once.
+            _replayCommandGuid = commandGuid;
+            _replayCommandId = commandId;
+            if (_restartScheduled)
+            {
+                return VSConstants.S_OK;
+            }
+            _restartScheduled = true;
 
             _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
             {
@@ -245,11 +343,22 @@ namespace conan_vs_extension
                 }
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                _restartScheduled = false;
 
                 try
                 {
                     ConanOutputPane.Log(Loc.T("Conan install finished, restarting the build...", "Installation Conan terminée, relance de la compilation..."));
-                    _dte.ExecuteCommand("Build.BuildSolution");
+                    if (_replayCommandGuid != null)
+                    {
+                        object customIn = null;
+                        object customOut = null;
+                        _dte.Commands.Raise(_replayCommandGuid, _replayCommandId, ref customIn, ref customOut);
+                    }
+                    else
+                    {
+                        // Not started by a known command (another extension, automation...).
+                        _dte.ExecuteCommand("Build.BuildSolution");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -271,11 +380,11 @@ namespace conan_vs_extension
         public void Dispose()
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            _buildEvents.OnBuildDone -= OnBuildDone;
             _buildEvents.OnBuildProjConfigBegin -= OnBuildProjConfigBegin;
             _buildEvents.OnBuildProjConfigDone -= OnBuildProjConfigDone;
             _solutionEvents.Opened -= OnSolutionOpened;
             _solutionEvents.ProjectAdded -= OnProjectAdded;
+            _commandEvents.BeforeExecute -= OnBeforeCommandExecute;
 
             if (_solutionBuildManager != null && _updateSolutionEventsCookie != 0)
             {
