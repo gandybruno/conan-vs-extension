@@ -683,6 +683,7 @@ namespace conan_vs_extension
             InstallOperationStatusText.Text = enable
                 ? Loc.T($"Switching {requirement} to editable mode...", $"Passage de {requirement} en mode éditable en cours...")
                 : Loc.T($"Switching {requirement} back to the cached package...", $"Retour de {requirement} au paquet du cache en cours...");
+            CancelInstallButton.IsEnabled = true;
             InstallOperationOverlay.Visibility = Visibility.Visible;
             try
             {
@@ -704,10 +705,10 @@ namespace conan_vs_extension
                 bool installed = false;
                 await ConanInstallTracker.Track(_project.FullName, async () =>
                 {
-                    installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, showErrors: true);
+                    installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, force: true);
                 }).JoinAsync();
 
-                if (!installed)
+                if (!installed && !ProjectConfigurationManager.LastConanInstallCancelled)
                 {
                     MessageBox.Show(
                         Loc.T($"Editable mode of {requirement} was changed, but 'conan install' failed:\n{ProjectConfigurationManager.LastConanInstallError}\n\n",
@@ -1015,6 +1016,7 @@ namespace conan_vs_extension
             InstallButton.IsEnabled = false;
             RemoveButton.IsEnabled = false;
             InstallOperationStatusText.Text = Loc.T($"Installing {selectedLibrary}/{selectedVersion}...", $"Installation de {selectedLibrary}/{selectedVersion} en cours...");
+            CancelInstallButton.IsEnabled = true;
             InstallOperationOverlay.Visibility = Visibility.Visible;
             try
             {
@@ -1029,14 +1031,14 @@ namespace conan_vs_extension
                 bool installed = false;
                 await ConanInstallTracker.Track(_project.FullName, async () =>
                 {
-                    installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, showErrors: true);
+                    installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, force: true);
                 }).JoinAsync();
 
                 if (installed)
                 {
                     MessageBox.Show(Loc.T($"{selectedLibrary}/{selectedVersion} installed.", $"{selectedLibrary}/{selectedVersion} installé."), "Conan C/C++ Package Manager", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
-                else
+                else if (!ProjectConfigurationManager.LastConanInstallCancelled)
                 {
                     MessageBox.Show(
                         Loc.T($"{selectedLibrary}/{selectedVersion} was added to conandata.yml, but 'conan install' failed:\n{ProjectConfigurationManager.LastConanInstallError}\n\nThe next Build will retry automatically.",
@@ -1064,6 +1066,17 @@ namespace conan_vs_extension
 
             FilterListView(LibrarySearchComboBox.Text);
             UpdateLibraryInfo(selectedLibrary);
+        }
+
+        /**
+         * The "Cancel" button of the install overlay: stops the running `conan install`. The
+         * operation that started it then ends as usual (overlay hidden, list refreshed).
+         */
+        private void CancelInstallButton_Click(object sender, RoutedEventArgs e)
+        {
+            CancelInstallButton.IsEnabled = false;
+            InstallOperationStatusText.Text = Loc.T("Cancelling...", "Annulation en cours...");
+            ProjectConfigurationManager.CancelConanInstall();
         }
 
         /**
@@ -1120,6 +1133,7 @@ namespace conan_vs_extension
             InstallButton.IsEnabled = false;
             RemoveButton.IsEnabled = false;
             InstallOperationStatusText.Text = Loc.T($"Removing {installedRequirement} from the project...", $"Retrait de {installedRequirement} du projet en cours...");
+            CancelInstallButton.IsEnabled = true;
             InstallOperationOverlay.Visibility = Visibility.Visible;
             try
             {
@@ -1128,10 +1142,10 @@ namespace conan_vs_extension
                 bool installed = false;
                 await ConanInstallTracker.Track(_project.FullName, async () =>
                 {
-                    installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, showErrors: true);
+                    installed = await ProjectConfigurationManager.EnsureConanPackagesInstalledAsync(_project, activeConfig, force: true);
                 }).JoinAsync();
 
-                if (!installed)
+                if (!installed && !ProjectConfigurationManager.LastConanInstallCancelled)
                 {
                     MessageBox.Show(
                         Loc.T($"{installedRequirement} was removed from the project (conandata.yml), but 'conan install' failed:\n{ProjectConfigurationManager.LastConanInstallError}\n\nThe next Build will retry automatically.",

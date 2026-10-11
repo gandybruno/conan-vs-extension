@@ -6,12 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Runtime.Remoting.Messaging;
 using System.Threading.Tasks;
-using System.Windows.Forms;
-using VSLangProj;
 
 namespace conan_vs_extension
 {
@@ -304,10 +299,10 @@ echo No changes detected, skipping conan install...
          *
          * @param project The project to install Conan packages for.
          * @param vcConfig The specific build configuration to generate/install for (its Conan profile - see ConanProfilesManager.getProfileName).
-         * @param showErrors Reserved for callers that want to react to failures beyond reading LastConanInstallError - not currently used to change this method's own behavior (it never shows UI itself either way).
+         * @param force True to run `conan install` unconditionally (an explicit install/removal/editable change from the package manager); false to skip it when nothing changed since the last successful install of this configuration (see IsConanInstallUpToDate) - the proactive calls, which would otherwise re-run Conan for every project at every solution load.
          * @return True if `conan install` succeeded (or there was nothing to do); false if it failed - see LastConanInstallError for why.
          */
-        public static async Task<bool> EnsureConanPackagesInstalledAsync(Project project, VCConfiguration vcConfig, bool showErrors)
+        public static async Task<bool> EnsureConanPackagesInstalledAsync(Project project, VCConfiguration vcConfig, bool force)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
@@ -328,6 +323,11 @@ echo No changes detected, skipping conan install...
             bool propsPrepared = PrepareConanPropsFiles(project);
             await InjectConanDepsAsync(project, vcConfig);
 
+            if (!force && !propsPrepared && IsConanInstallUpToDate(projectDirectory, profileName))
+            {
+                return true;
+            }
+
             bool success;
             string error;
 
@@ -335,19 +335,26 @@ echo No changes detected, skipping conan install...
             // profile/configuration event firing while the package manager runs its own) race on
             // the same Conan cache, and the loser can leave a recipe registered without its files.
             await _installGate.WaitAsync();
+            var cancellation = new System.Threading.CancellationTokenSource();
+            _installCancellation = cancellation;
             try
             {
-                (success, error) = await RunConanInstallProcessAsync(projectDirectory, profileName);
+                await EnsureDefaultProfileAsync();
+
+                (success, error) = await RunConanInstallProcessAsync(projectDirectory, profileName, cancellation.Token);
 
                 // A recipe left half-written in the cache ("seems broken" / "conanfile.py not found")
                 // fails every later install: drop just that reference from the cache and retry once.
-                if (!success && await TryRepairBrokenRecipeAsync(error))
+                if (!success && !cancellation.IsCancellationRequested && await TryRepairBrokenRecipeAsync(error))
                 {
-                    (success, error) = await RunConanInstallProcessAsync(projectDirectory, profileName);
+                    (success, error) = await RunConanInstallProcessAsync(projectDirectory, profileName, cancellation.Token);
                 }
             }
             finally
             {
+                LastConanInstallCancelled = cancellation.IsCancellationRequested;
+                _installCancellation = null;
+                cancellation.Dispose();
                 _installGate.Release();
             }
 
@@ -510,6 +517,71 @@ echo No changes detected, skipping conan install...
 
         private static readonly System.Threading.SemaphoreSlim _installGate = new System.Threading.SemaphoreSlim(1, 1);
 
+        // Cancels the `conan install` currently holding _installGate (null when none is running).
+        private static volatile System.Threading.CancellationTokenSource _installCancellation;
+
+        /**
+         * Stops the `conan install` that is currently running, if any, along with every process it
+         * started (cmake, the compiler...). EnsureConanPackagesInstalledAsync then returns false
+         * with LastConanInstallCancelled set.
+         */
+        public static void CancelConanInstall()
+        {
+            try
+            {
+                _installCancellation?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // The install finished at the same moment - nothing left to cancel.
+            }
+        }
+
+        /**
+         * Whether the last EnsureConanPackagesInstalledAsync that returned false did so because
+         * the user cancelled it (CancelConanInstall) rather than because Conan failed.
+         */
+        public static bool LastConanInstallCancelled { get; private set; }
+
+        private static bool _defaultProfileChecked;
+
+        /**
+         * Every command of this extension uses `-pr:b=default`, but a freshly installed Conan has
+         * no default profile until `conan profile detect` is run once. Creates it when it is
+         * missing, so the first install works without a trip to a terminal. Checked once per
+         * session; an existing profile is never touched.
+         */
+        internal static async Task EnsureDefaultProfileAsync()
+        {
+            if (_defaultProfileChecked)
+            {
+                return;
+            }
+
+            try
+            {
+                (int exitCode, string _, string _) = await ConanRemoteHelper.RunConanAsync("profile path default", 20000);
+                if (exitCode == 0)
+                {
+                    _defaultProfileChecked = true;
+                    return;
+                }
+
+                if (exitCode == -1)
+                {
+                    return; // timed out: unknown, check again next time
+                }
+
+                ConanOutputPane.Log(Loc.T("No default Conan profile on this machine: creating it (conan profile detect).", "Aucun profil Conan par défaut sur cette machine : création (conan profile detect)."));
+                (bool created, string _) = await ConanRemoteHelper.RunConanCheckedAsync("profile detect");
+                _defaultProfileChecked = created;
+            }
+            catch (Exception ex)
+            {
+                ConanOutputPane.Log(Loc.T($"  -> exception: {ex.Message}", $"  -> exception : {ex.Message}"));
+            }
+        }
+
         /**
          * If a failed `conan install` reports a recipe that cannot be loaded from the cache (its
          * folder is missing/incomplete), removes that one reference from the cache
@@ -559,12 +631,14 @@ echo No changes detected, skipping conan install...
          * directory/profile, streaming its stdout/stderr line-by-line into ConanOutputPane
          * as they arrive (rather than only showing the full output once the process exits - a
          * `--build=missing` compiling a large binary from source can otherwise look frozen for
-         * several minutes). Bounded by a 5-minute timeout, after which the process is killed and
-         * treated as a failure so the UI never gets stuck waiting indefinitely.
+         * several minutes). There is no limit on the total duration (building a large library
+         * from source legitimately takes a long time): the process is only stopped when the user
+         * cancels it, or when it has printed nothing at all for InstallSilenceTimeoutMs - a hung
+         * process - so the UI never gets stuck waiting indefinitely.
          *
-         * @return (true, null) on success; (false, an error message built from stderr/stdout or the timeout/exception) otherwise.
+         * @return (true, null) on success; (false, an error message built from stderr/stdout or the cancellation/timeout/exception) otherwise.
          */
-        private static async Task<(bool success, string error)> RunConanInstallProcessAsync(string projectDirectory, string profileName)
+        private static async Task<(bool success, string error)> RunConanInstallProcessAsync(string projectDirectory, string profileName, System.Threading.CancellationToken cancellationToken)
         {
             string conanPath = GlobalSettings.GetResolvedConanExecutablePath();
 
@@ -586,6 +660,8 @@ echo No changes detected, skipping conan install...
             var stdoutBuilder = new System.Text.StringBuilder();
             var stderrBuilder = new System.Text.StringBuilder();
             var processExited = new TaskCompletionSource<bool>();
+            var cancelled = new TaskCompletionSource<bool>();
+            long lastOutputTicks = DateTime.UtcNow.Ticks;
 
             try
             {
@@ -598,12 +674,14 @@ echo No changes detected, skipping conan install...
                     process.OutputDataReceived += (s, e) =>
                     {
                         if (e.Data == null) return;
+                        System.Threading.Interlocked.Exchange(ref lastOutputTicks, DateTime.UtcNow.Ticks);
                         stdoutBuilder.AppendLine(e.Data);
                         ConanOutputPane.Log(e.Data);
                     };
                     process.ErrorDataReceived += (s, e) =>
                     {
                         if (e.Data == null) return;
+                        System.Threading.Interlocked.Exchange(ref lastOutputTicks, DateTime.UtcNow.Ticks);
                         stderrBuilder.AppendLine(e.Data);
                         ConanOutputPane.Log(e.Data);
                     };
@@ -613,20 +691,36 @@ echo No changes detected, skipping conan install...
                     process.BeginOutputReadLine();
                     process.BeginErrorReadLine();
 
-                    // conan install can compile missing binaries (--build=missing) - give it
-                    // considerably more time than a simple metadata/list command. But still bound
-                    // it: if the process hangs (waiting on input, a stalled download...) instead of
-                    // failing outright, this would never resolve and the UI would be stuck on
-                    // "chargement" indefinitely.
-                    const int timeoutMs = 300000;
-                    Task completed = await Task.WhenAny(processExited.Task, Task.Delay(timeoutMs));
-
-                    if (completed != processExited.Task)
+                    // conan install can compile missing binaries (--build=missing), which has no
+                    // predictable duration: wait as long as it keeps working. It is only stopped
+                    // on the user's request, or when it hangs (waiting on input, a stalled
+                    // download...) - told apart from a long build by its total silence.
+                    using (cancellationToken.Register(() => cancelled.TrySetResult(true)))
                     {
-                        try { process.Kill(); } catch { /* already exited on its own */ }
-                        string timeoutError = Loc.T($"'conan install' did not answer within the allotted time ({timeoutMs / 1000}s).", $"'conan install' n'a pas répondu dans le délai imparti ({timeoutMs / 1000}s).");
-                        ConanOutputPane.Log(Loc.T($"  -> timed out ({timeoutMs / 1000}s), process killed.", $"  -> délai dépassé ({timeoutMs / 1000}s), processus arrêté."));
-                        return (false, timeoutError);
+                        while (true)
+                        {
+                            Task completed = await Task.WhenAny(processExited.Task, cancelled.Task, Task.Delay(30000));
+                            if (completed == processExited.Task)
+                            {
+                                break;
+                            }
+
+                            if (completed == cancelled.Task)
+                            {
+                                await Task.Run(() => KillProcessTree(process));
+                                ConanOutputPane.Log(Loc.T("  -> cancelled by the user, process stopped.", "  -> annulé par l'utilisateur, processus arrêté."));
+                                return (false, Loc.T("'conan install' was cancelled.", "'conan install' a été annulé."));
+                            }
+
+                            long silenceMs = (DateTime.UtcNow.Ticks - System.Threading.Interlocked.Read(ref lastOutputTicks)) / TimeSpan.TicksPerMillisecond;
+                            if (silenceMs > InstallSilenceTimeoutMs)
+                            {
+                                await Task.Run(() => KillProcessTree(process));
+                                int minutes = InstallSilenceTimeoutMs / 60000;
+                                ConanOutputPane.Log(Loc.T($"  -> no output for {minutes} min, process stopped.", $"  -> aucune sortie depuis {minutes} min, processus arrêté."));
+                                return (false, Loc.T($"'conan install' printed nothing for {minutes} minutes and was stopped.", $"'conan install' n'a rien affiché pendant {minutes} minutes et a été arrêté."));
+                            }
+                        }
                     }
 
                     // The parameterless WaitForExit() guarantees the async output/error readers
@@ -651,6 +745,49 @@ echo No changes detected, skipping conan install...
             {
                 ConanOutputPane.Log(Loc.T($"  -> exception: {ex.Message}", $"  -> exception : {ex.Message}"));
                 return (false, ex.Message);
+            }
+        }
+
+        // A `conan install` that prints nothing at all for this long is considered hung.
+        private const int InstallSilenceTimeoutMs = 15 * 60 * 1000;
+
+        /**
+         * Kills a process and everything it started (`taskkill /T`): `conan install --build=missing`
+         * runs cmake, msbuild and the compiler as children, which Process.Kill alone would leave
+         * running.
+         */
+        private static void KillProcessTree(System.Diagnostics.Process process)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "taskkill",
+                    Arguments = $"/PID {process.Id} /T /F",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using (var killer = System.Diagnostics.Process.Start(psi))
+                {
+                    killer.WaitForExit(10000);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProjectConfigurationManager] taskkill failed: {ex.Message}");
+            }
+
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill();
+                }
+            }
+            catch
+            {
+                // already exited on its own
             }
         }
 
@@ -683,11 +820,106 @@ echo No changes detected, skipping conan install...
                 File.Copy(versionPath, Path.Combine(conanFolder, $"VERSION_{configKey}"), true);
             }
 
+            // Not read by the pre-build script (it relies on the shared ".runconan" marker):
+            // lets IsConanInstallUpToDate tell which configuration's profile changed.
+            string profilePath = Path.Combine(conanFolder, configKey);
+            if (File.Exists(profilePath))
+            {
+                File.Copy(profilePath, Path.Combine(conanFolder, $"PROFILE_{configKey}"), true);
+            }
+
             string runConanMarker = Path.Combine(conanFolder, ".runconan");
             if (File.Exists(runConanMarker))
             {
                 File.Delete(runConanMarker);
             }
+        }
+
+        /**
+         * Whether the last successful `conan install` of this configuration is still valid, i.e.
+         * running it again would change nothing: conandata.yml, conanfile.py, version.txt and the
+         * configuration's profile are the ones snapshotted by UpdateConanControlFiles, no profile
+         * change is pending (".runconan"), and what Conan generated is still there - the property
+         * sheets, and every package folder they point to (gone after a cache clean or a
+         * `conan remove`). Any doubt or error answers false: installing once too often is harmless.
+         */
+        private static bool IsConanInstallUpToDate(string projectDirectory, string configKey)
+        {
+            try
+            {
+                string conanFolder = Path.Combine(projectDirectory, ".conan");
+                if (File.Exists(Path.Combine(conanFolder, ".runconan")))
+                {
+                    return false;
+                }
+
+                if (!SameContent(Path.Combine(projectDirectory, "conandata.yml"), Path.Combine(conanFolder, $"CONANDATA_{configKey}")) ||
+                    !SameContent(Path.Combine(projectDirectory, "conanfile.py"), Path.Combine(conanFolder, $"CONANFILE_{configKey}")) ||
+                    !SameContent(Path.Combine(conanFolder, configKey), Path.Combine(conanFolder, $"PROFILE_{configKey}")))
+                {
+                    return false;
+                }
+
+                string versionPath = Path.Combine(projectDirectory, "version.txt");
+                if (File.Exists(versionPath) && !SameContent(versionPath, Path.Combine(conanFolder, $"VERSION_{configKey}")))
+                {
+                    return false;
+                }
+
+                string generatorsFolder = Path.Combine(projectDirectory, "conan");
+                string conandeps = Path.Combine(generatorsFolder, "conandeps.props");
+                if (!File.Exists(conandeps) || File.ReadAllText(conandeps) == EmptyPropsFile)
+                {
+                    return false;
+                }
+
+                var rootFolderRegex = new System.Text.RegularExpressions.Regex(@"<Conan\w*RootFolder>(?<path>[^<]+)</Conan\w*RootFolder>");
+                foreach (string propsFile in Directory.GetFiles(generatorsFolder, "*.props", SearchOption.AllDirectories))
+                {
+                    foreach (System.Text.RegularExpressions.Match match in rootFolderRegex.Matches(File.ReadAllText(propsFile)))
+                    {
+                        if (!Directory.Exists(match.Groups["path"].Value.Trim()))
+                        {
+                            return false;
+                        }
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProjectConfigurationManager] IsConanInstallUpToDate failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        /**
+         * Whether both files exist and hold the same bytes.
+         */
+        private static bool SameContent(string path, string snapshotPath)
+        {
+            if (!File.Exists(path) || !File.Exists(snapshotPath))
+            {
+                return false;
+            }
+
+            byte[] content = File.ReadAllBytes(path);
+            byte[] snapshot = File.ReadAllBytes(snapshotPath);
+            if (content.Length != snapshot.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < content.Length; i++)
+            {
+                if (content[i] != snapshot[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         /**

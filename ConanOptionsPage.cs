@@ -25,8 +25,8 @@ public class ConanOptionsPage : DialogPage
 
     /**
      * Refreshes every field from GlobalSettings right before the Options dialog is shown, so
-     * values discovered/entered purely at runtime this session - the auto-detected GitLab
-     * URL/project ID, per-remote tokens typed into the "browse" prompt - show up here and get
+     * values entered purely at runtime this session - the selected package source, per-remote
+     * tokens typed into the "browse" prompt - show up here and get
      * persisted to disk if the user clicks OK, instead of only living in memory for the
      * current Visual Studio session.
      */

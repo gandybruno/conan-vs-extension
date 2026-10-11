@@ -58,7 +58,7 @@ namespace conan_vs_extension
             System.Windows.Forms.Label label = new System.Windows.Forms.Label { Text = message, AutoSize = true, Left = 10, Top = 10 };
             System.Windows.Forms.TextBox textBox = new System.Windows.Forms.TextBox { Left = 10, Top = 40, Width = 260 };
             System.Windows.Forms.Button okButton = new System.Windows.Forms.Button { Text = "OK", Left = 150, Width = 60, Top = 70, DialogResult = System.Windows.Forms.DialogResult.OK };
-            System.Windows.Forms.Button cancelButton = new System.Windows.Forms.Button { Text = "Annuler", Left = 220, Width = 60, Top = 70, DialogResult = System.Windows.Forms.DialogResult.Cancel };
+            System.Windows.Forms.Button cancelButton = new System.Windows.Forms.Button { Text = Loc.T("Cancel", "Annuler"), Left = 220, Width = 60, Top = 70, DialogResult = System.Windows.Forms.DialogResult.Cancel };
             textBox.Text = textDefault;
             inputForm.Controls.Add(label);
             inputForm.Controls.Add(textBox);

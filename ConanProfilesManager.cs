@@ -37,15 +37,26 @@ namespace conan_vs_extension
         /**
          * Maps an MSBuild platform name to the Conan `arch` setting.
          *
-         * @throws KeyNotFoundException The platform isn't one of "x64", "Win32", "ARM64" (e.g. a plain 32-bit "ARM" project).
+         * @throws NotSupportedException The platform isn't one this extension has a known mapping for.
          */
         private string getConanArch(string platform)
         {
-            var archMap = new Dictionary<string, string>();
+            var archMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             archMap["x64"] = "x86_64";
             archMap["Win32"] = "x86";
+            archMap["x86"] = "x86";
+            archMap["ARM"] = "armv7";
             archMap["ARM64"] = "armv8";
-            return archMap[platform];
+            archMap["ARM64EC"] = "arm64ec";
+
+            if (!archMap.TryGetValue(platform ?? string.Empty, out string arch))
+            {
+                throw new NotSupportedException(
+                    $"Unknown or unsupported platform '{platform}'. " +
+                    "The Conan extension does not know which Conan arch this platform maps to.");
+            }
+
+            return arch;
         }
 
         /**
@@ -115,13 +126,49 @@ namespace conan_vs_extension
 
 
         /**
-         * Maps the project's "C++ Language Standard" setting to the Conan `compiler.cppstd` value ("14", "17", "20", "23"). See https://learn.microsoft.com/cpp/build/reference/std-specify-language-standard-version.
+         * Whether the project links the debug C runtime (/MTd, /MDd) - what Conan calls `compiler.runtime_type=Debug`.
          */
-        private string getConanCppstd(string languageStandard)
+        private static bool IsDebugRuntime(runtimeLibraryOption runtimeLibraryValue)
+        {
+            return runtimeLibraryValue == runtimeLibraryOption.rtMultiThreadedDebug ||
+                   runtimeLibraryValue == runtimeLibraryOption.rtMultiThreadedDebugDLL;
+        }
+
+        /**
+         * The Conan `build_type` of a configuration. Its name is used when it is one Conan knows
+         * (Debug, Release, RelWithDebInfo, MinSizeRel); a configuration named anything else
+         * ("Debug-Static", "ReleaseUnicode"...) is Debug or Release depending on the C runtime it links.
+         */
+        private static string GetConanBuildType(string configurationName, bool debugRuntime)
+        {
+            foreach (string buildType in new[] { "Debug", "Release", "RelWithDebInfo", "MinSizeRel" })
+            {
+                if (string.Equals(configurationName, buildType, StringComparison.OrdinalIgnoreCase))
+                {
+                    return buildType;
+                }
+            }
+
+            return debugRuntime ? "Debug" : "Release";
+        }
+
+        /**
+         * Maps the project's "C++ Language Standard" setting to the Conan `compiler.cppstd` value ("14", "17", "20", "23"). See https://learn.microsoft.com/cpp/build/reference/std-specify-language-standard-version.
+         *
+         * @return The cppstd value, or null when the setting is unknown/unreadable: the profile then leaves `compiler.cppstd` out and Conan uses the compiler's default.
+         */
+        private string getConanCppstd(string languageStandard, string compilerVersion)
         {
             // https://learn.microsoft.com/en-us/cpp/build/reference/std-specify-language-standard-version?view=msvc-170
 
-            if (languageStandard.ToLower().Contains("default"))
+            if (string.IsNullOrWhiteSpace(languageStandard))
+            {
+                return null;
+            }
+
+            string value = languageStandard.ToLowerInvariant();
+
+            if (value.Contains("default"))
             {
                 return "14";
             }
@@ -130,12 +177,28 @@ namespace conan_vs_extension
 
             foreach (string cppStdValue in cppStdValues)
             {
-                if (languageStandard.Contains(cppStdValue))
+                if (value.Contains(cppStdValue))
                 {
                     return cppStdValue;
                 }
             }
-            return "null";
+
+            // /std:c++latest: the newest standard that toolset implements.
+            if (value.Contains("latest"))
+            {
+                switch (compilerVersion)
+                {
+                    case "190":
+                    case "191":
+                        return "17";
+                    case "192":
+                        return "20";
+                    default:
+                        return "23";
+                }
+            }
+
+            return null;
         }
 
         private static string EvaluateOrEmpty(VCConfiguration vcConfig, string expression)
@@ -153,6 +216,7 @@ namespace conan_vs_extension
         }
 
         private static readonly HashSet<string> _toolsetWarnings = new HashSet<string>();
+        private static readonly HashSet<string> _profileErrors = new HashSet<string>();
 
         /**
          * Tells the user (once per project and toolset) when the project does not use the platform
@@ -217,9 +281,9 @@ namespace conan_vs_extension
          * Writes one Conan profile file per build configuration of project
          * (under its `.conan\` folder), only if the project already opted into Conan (has a
          * `conandata.yml`). Unwritable/unrecognized configurations (e.g. an unmapped
-         * PlatformToolset) are collected and reported in a single message box at the end rather
-         * than aborting the whole loop, so one bad configuration never blocks profile generation
-         * for the others.
+         * PlatformToolset or platform) are collected and reported once in the Conan Output pane
+         * rather than aborting the whole loop, so one bad configuration never blocks profile
+         * generation for the others.
          *
          * @param project The EnvDTE project to generate profiles for.
          */
@@ -264,28 +328,41 @@ namespace conan_vs_extension
                                 string arch = getConanArch(vcConfig.Evaluate("$(PlatformName)").ToString());
                                 IVCRulePropertyStorage generalRule = vcConfig.Rules.Item("ConfigurationGeneral") as IVCRulePropertyStorage;
                                 string languageStandard = generalRule == null ? null : generalRule.GetEvaluatedPropertyValue("LanguageStandard");
-                                string cppStd = getConanCppstd(languageStandard);
+                                string cppStd = getConanCppstd(languageStandard, compilerVersion);
 
                                 var tools = (IVCCollection) vcConfig.Tools;
                                 var vcCTool = (VCCLCompilerTool) tools.Item("VCCLCompilerTool");
 
                                 string runtime = GetRuntimeLibraryType(vcCTool.RuntimeLibrary);
+                                bool debugRuntime = IsDebugRuntime(vcCTool.RuntimeLibrary);
 
-                                string buildType = vcConfig.ConfigurationName;
-                                string profileContent =
-$@"
-[settings]
-arch={arch}
-build_type={buildType}
-compiler=msvc
-compiler.cppstd={cppStd}
-compiler.runtime={runtime}
-" +
-$@"
-compiler.runtime_type={buildType}
-compiler.version={compilerVersion}
-os=Windows
-";
+                                // Neither comes from the configuration's name alone: Conan only accepts
+                                // its own build types, and Debug/Release for the runtime type.
+                                string buildType = GetConanBuildType(vcConfig.ConfigurationName, debugRuntime);
+                                string runtimeType = debugRuntime ? "Debug" : "Release";
+
+                                var profileLines = new List<string>
+                                {
+                                    "",
+                                    "[settings]",
+                                    $"arch={arch}",
+                                    $"build_type={buildType}",
+                                    "compiler=msvc"
+                                };
+                                if (cppStd != null)
+                                {
+                                    profileLines.Add($"compiler.cppstd={cppStd}");
+                                }
+                                profileLines.AddRange(new[]
+                                {
+                                    $"compiler.runtime={runtime}",
+                                    "",
+                                    $"compiler.runtime_type={runtimeType}",
+                                    $"compiler.version={compilerVersion}",
+                                    "os=Windows",
+                                    ""
+                                });
+                                string profileContent = string.Join("\r\n", profileLines);
 
                                 bool shouldWriteFile = true;
 
@@ -315,14 +392,15 @@ os=Windows
                             }
                         }
 
-                        if (configErrors.Count > 0)
+                        // Profiles are regenerated at every build, solution load and configuration
+                        // switch: report a configuration that cannot be mapped once, in the Conan
+                        // pane, rather than with a message box each time.
+                        foreach (string configError in configErrors)
                         {
-                            MessageBox.Show(
-                                Loc.T("There was a problem generating the Conan profile(s) for:", "Un problème est survenu lors de la génération des profils Conan pour :") + Environment.NewLine +
-                                string.Join(Environment.NewLine, configErrors),
-                                "Error - Conan C/C++ Package Manager",
-                                MessageBoxButton.OK,
-                                MessageBoxImage.Error);
+                            if (_profileErrors.Add($"{project.FullName}|{configError}"))
+                            {
+                                ConanOutputPane.Log(Loc.T($"[{project.Name}] No Conan profile generated for {configError}", $"[{project.Name}] Pas de profil Conan généré pour {configError}"));
+                            }
                         }
                     }
                 }

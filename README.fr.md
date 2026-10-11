@@ -55,7 +55,7 @@ sélectionne **conancenter** comme source de paquets par défaut.
 Ouvrez une solution C++, puis faites un clic droit sur un projet dans l'Explorateur de
 solutions - ou utilisez le menu **Projet** - et choisissez **Manage Conan Packages...**.
 
-![Menu Projet](.github/readme/fr-project-menu.png)
+![Menu Projet](readme/fr-project-menu.png)
 
 Une fenêtre de document dédiée à ce projet s'ouvre, avec un onglet **Parcourir** (tout ce que
 la source sélectionnée propose) et un onglet **Installé** (ce que le projet utilise déjà).
@@ -65,7 +65,7 @@ la source sélectionnée propose) et un onglet **Installé** (ce que le projet u
 
 ## 3. Parcourir et installer des bibliothèques
 
-![Onglet Parcourir](.github/readme/fr-browse.png)
+![Onglet Parcourir](readme/fr-browse.png)
 
 - **Source** (en haut à droite) : le remote Conan dont vient la liste. Les remotes sont ceux
   configurés dans Conan (`conan remote list`). Le bouton ⚙ ouvre les paramètres de l'extension
@@ -109,7 +109,7 @@ indépendantes du compilateur.
 
 ## 5. Retirer une bibliothèque d'un projet
 
-![Onglet Installé avec un paquet éditable](.github/readme/fr-installed-editable.png)
+![Onglet Installé avec un paquet éditable](readme/fr-installed-editable.png)
 
 L'onglet **Installé** liste les dépendances du projet courant, lues dans son `conandata.yml` -
 y compris les bibliothèques que la source sélectionnée ne connaît pas (paquet local ou
@@ -149,7 +149,7 @@ la machine qui utilisent ce `nom/version`. L'état est relu depuis Conan à chaq
 est une grille de type NuGet des remotes configurés sur la machine - la même liste que
 `conan remote list`.
 
-![Package Sources](.github/readme/fr-package-sources.png)
+![Package Sources](readme/fr-package-sources.png)
 
 | Bouton | Commande équivalente |
 |---|---|
@@ -174,7 +174,7 @@ paquets éditables ne sont pas touchés.
 
 Cliquez sur **Ajouter un remote...**.
 
-![Ajouter un remote](.github/readme/fr-add-remote.png)
+![Ajouter un remote](readme/fr-add-remote.png)
 
 **Remote Conan (URL)** - Artifactory, serveur Conan... : indiquez un *nom* et l'*URL*.
 
@@ -232,11 +232,18 @@ supprimez, l'extension cesse de modifier le fichier et vous pouvez l'éditer à 
 Comportements automatiques :
 
 - `conan install` s'exécute de façon proactive à l'ouverture d'une solution, à l'ajout d'un
-  projet ou au changement de configuration/profil actif. Les installations sont sérialisées
+  projet ou au changement de configuration/profil actif - et seulement si quelque chose a
+  changé depuis la dernière installation réussie de cette configuration (dépendances,
+  recette, profil, ou paquet absent du cache Conan). Les installations sont sérialisées
   pour que deux d'entre elles n'entrent jamais en concurrence sur le cache Conan.
-- Si vous lancez une **génération** pendant que Conan installe, elle est reportée puis
-  relancée automatiquement quand Conan a terminé.
+- Si vous lancez une **génération** pendant que Conan installe, elle est reportée, puis ce
+  que vous aviez demandé (Générer, Régénérer, un seul projet, F5...) est relancé
+  automatiquement quand Conan a terminé.
+- Un profil Conan par défaut manquant est créé pour vous (`conan profile detect`).
 - Chaque appel à `conan` est borné par un délai : une commande bloquée ne fige jamais l'IDE.
+  `conan install` n'a pas de durée limite - compiler une grosse bibliothèque prend le temps
+  qu'il faut - mais il peut être arrêté avec **Annuler**, et l'est s'il n'affiche plus rien
+  pendant 15 minutes.
 - Une recette laissée corrompue dans le cache Conan est supprimée et l'installation est
   retentée une fois.
 
