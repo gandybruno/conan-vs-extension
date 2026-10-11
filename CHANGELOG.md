@@ -81,6 +81,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Restyled toolbar icons to match Visual Studio's flat look; the dialogs opened by the
   extension use the colors of the current Visual Studio theme.
 - The code base is documented with Doxygen-style comments.
+- Complete README in English and French (installation, every feature, remotes including
+  GitLab, troubleshooting) with screenshots.
 - Async-void event handlers were replaced by `JoinableTaskFactory`-based handlers and the
   VSTHRD / NU1603 build warnings were fixed.
 
